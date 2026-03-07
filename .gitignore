@@ -1,0 +1,149 @@
+# ==========================================
+# Python
+# ==========================================
+__pycache__/
+*.py[cod]
+*$py.class
+*.pyo
+*.pyd
+*.pdb
+*.so
+
+# Virtual environments
+.venv/
+venv/
+env/
+ENV/
+
+# Build artifacts
+build/
+dist/
+*.egg-info/
+*.egg
+
+# ==========================================
+# Jupyter Notebook & IPython
+# ==========================================
+.ipynb_checkpoints/
+*.nbconvert.ipynb
+*.ipynb_convert/
+profile_default/
+ipython_config.py
+
+# Jupyter large checkpoints / autosaves
+*.checkpoint.ipynb
+
+# ==========================================
+# Data Files (Generated / Large / Private)
+# ==========================================
+data/generated/
+data/processed/
+data/san_diego_energy_load_data.csv
+data/segments/
+# Raw data (optional: keep small samples only)
+data/raw/*.csv
+!data/raw/sample_*.csv     # keep small sample files
+
+# Tuning artifacts
+tuning.db
+tuning_results.csv
+
+# Model output files
+models/**/*.joblib
+models/**/*.pkl
+models/**/*.h5
+models/**/*.pt
+
+# Model comparison summary
+model_comparison_summary.csv
+
+# Cached training results
+*.npz
+*.npy
+
+# ==========================================
+# Logs / Temp / Runtime Files
+# ==========================================
+logs/
+*.log
+*.tmp
+*.temp
+*.cache
+.cache/
+tmp/
+temp/
+
+# ==========================================
+# IDE / Editor Files
+# ==========================================
+
+# VS Code
+.vscode/
+*.code-workspace
+
+# JetBrains / PyCharm
+.idea/
+*.iml
+
+# ==========================================
+# OS Specific Files
+# ==========================================
+
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+
+# Windows
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+
+# Linux
+*~
+
+# ==========================================
+# Node / Other Tools (if used)
+# ==========================================
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# ==========================================
+# Project-Specific Ignore
+# ==========================================
+
+# JSON configs and metadata that should not be public
+*.json
+
+# Except documentation JSON files if needed
+!docs/*.json
+
+# Notebook metadata copies
+covidImpactAnalysis.json
+modelComparison.json
+modelTuning.json
+postCovidTuning.json
+
+# Energy data tracking
+Docs/data_generation_tracking.json
+
+# ==========================================
+# Local scripts
+# ==========================================
+
+# Shell / PowerShell history
+*.ps1_history
+
+# ==========================================
+# Python Coverage / Testing
+# ==========================================
+.coverage
+.coverage.*
+htmlcov/
+pytest_cache/
+.tox/
+.mypy_cache/
+.dmypy.json
+.pytest_cache/
