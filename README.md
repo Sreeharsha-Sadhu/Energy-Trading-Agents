@@ -36,6 +36,7 @@ All refactored `.py` modules were generated directly from notebook logic, cleane
 ├── data/
 │   ├── processed/                 # Fully processed dataset
 │   ├── segments/                  # Six modeling segments
+│   ├── demo_logs/                 # Live demo simulation logs
 │   └── san_diego_energy_load_data.csv
 │
 ├── notebooks/                     # Original notebooks (unchanged)
@@ -45,11 +46,17 @@ All refactored `.py` modules were generated directly from notebook logic, cleane
 │   └── modelComparison.ipynb
 │
 ├── src/
-│   ├── data_generation/           # Synthetic generator modules
-│   ├── preprocessing/             # Cleaning, features, segmentation
-│   └── modeling/                  # Training, CV, tuning, evaluation
+│   ├── forecaster/                # Synthetic generator & load models
+│   ├── demo/                      # Streamlit dashboard & data provider
+│   ├── agent/                     # PPO model training & inference
+│   ├── envs/                      # Gymnasium trading environment
+│   ├── api/                       # FastAPI routes & schemas
+│   └── main.py                    # FastAPI application entrypoint
 │
 ├── scripts/                       # Automation scripts
+│   ├── start_demo.sh              # One-command demo launcher
+│   ├── train_demo_agent.py        # Train PPO agent
+│   ├── run_simulation.py          # Market simulation loop
 │   ├── generate_dataset.py
 │   ├── preprocess_data.py
 │   ├── train_all_models.py
@@ -60,7 +67,7 @@ All refactored `.py` modules were generated directly from notebook logic, cleane
 ├── models/                        # Saved model artifacts
 ├── plots/                         # Auto-generated CV visualizations
 ├── reports/                       # Unified experiment report(s)
-├── Docs/
+├── Docs/                          # Documentation (incl. DEMO_GUIDE.md)
 ├── pyproject.toml
 └── README.md
 ```
@@ -177,6 +184,23 @@ reports/experiment_report.md
 
 ---
 
+## ⚡ **Live Demo — RL Trading Agent**
+
+A real-time Streamlit dashboard that visualises a PPO agent buying, selling, and holding energy in a simulated market.
+
+### Quick start
+
+```bash
+bash scripts/start_demo.sh
+```
+
+This launches the FastAPI backend, simulation loop, and Streamlit dashboard. Open **http://localhost:8501** to watch the agent trade.
+
+For full setup instructions, architecture details, configuration, and troubleshooting see
+**[Docs/DEMO_GUIDE.md](Docs/DEMO_GUIDE.md)**.
+
+---
+
 ## 🚀 **Quick Start**
 
 ### **1. Install dependencies**
@@ -260,9 +284,10 @@ Each has its own model, tuning history, and evaluation.
 
 ## 📝 **Requirements**
 
-* Python 3.9+
+* Python 3.12+
 * Pandas, NumPy
 * LightGBM, XGBoost
-* Optuna
-* Joblib
-* Matplotlib
+* Optuna, Joblib, Matplotlib
+* Streamlit, Plotly
+* Stable-Baselines3, Gymnasium
+* FastAPI, Uvicorn
