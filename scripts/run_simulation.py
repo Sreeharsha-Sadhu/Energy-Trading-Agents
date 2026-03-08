@@ -1,101 +1,161 @@
 #!/usr/bin/env python3
-import time
-import requests
-import json
-import pandas as pd
-import os
+"""
+Simulation orchestrator for the Energy Trading Agent demo.
+
+Replays synthetic market data, sends each tick to the FastAPI /api/v1/trade
+endpoint, applies the returned action locally (mirroring the gym env logic),
+and logs every state transition to a CSV for the dashboard to consume.
+
+Supports dynamic scenario overrides via a JSON control file written by the
+Streamlit dashboard sidebar.
+"""
+
 import argparse
-from datetime import datetime, timedelta
+import json
+import os
+import time
+from datetime import datetime
+
+import pandas as pd
+import requests
+
+from src.config import settings
 from src.demo.data_provider import iterate_market_ticks
 
-def run_simulation(speed=1, hours=168, log_dir="data/demo_logs"):
-    """
-    speed: simulation speed (1 real second = X simulation hours)
-    hours: total simulation hours
+SCENARIO_CONTROL_FILE = "data/demo_logs/scenario_control.json"
+
+
+def _read_scenario_overrides() -> dict:
+    """Read dynamic scenario overrides written by the dashboard."""
+    defaults = {"price_multiplier": 1.0, "demand_multiplier": 1.0}
+    if not os.path.exists(SCENARIO_CONTROL_FILE):
+        return defaults
+    try:
+        with open(SCENARIO_CONTROL_FILE, "r") as f:
+            data = json.load(f)
+        return {
+            "price_multiplier": float(data.get("price_multiplier", 1.0)),
+            "demand_multiplier": float(data.get("demand_multiplier", 1.0)),
+        }
+    except Exception:
+        return defaults
+
+
+def run_simulation(speed: float = 1.0, hours: int = 168, log_dir: str = "data/demo_logs"):
+    """Run the trading simulation loop.
+
+    Args:
+        speed: Simulation speed multiplier (1 real sec = X sim hours).
+        hours: Total number of simulation hours to run.
+        log_dir: Directory for the CSV log consumed by the dashboard.
     """
     os.makedirs(log_dir, exist_ok=True)
     log_file = os.path.join(log_dir, "simulation_log.csv")
-    
-    # Initialize components
+
     start_date = datetime.now()
-    
-    # Initial state
-    balance = 10000.0
-    battery_level = 0.0
-    history = []
-    
+
+    # Use the SAME initial values as the training environment
+    balance = settings.INITIAL_ACCOUNT_BALANCE       # $100.0
+    battery_level = settings.INITIAL_BATTERY_KWH     # 10.0 kWh
+    trade_volume = settings.MAX_TRADE_VOLUME_KWH     # 5.0 kWh
+    max_battery = settings.MAX_BATTERY_CAPACITY_KWH  # 50.0 kWh
+    initial_balance = balance
+
+    history: list[dict] = []
+
     print(f"🚀 Starting simulation: {hours} hours at {speed}x speed")
+    print(f"   Initial balance: ${balance:.2f} | Battery: {battery_level:.1f} kWh")
+    print(f"   Trade volume: {trade_volume:.1f} kWh | Max battery: {max_battery:.1f} kWh")
     print(f"📊 Logging to: {log_file}")
-    
-    # Simulation loop using the data provider generator
-    for dt, price, demand in iterate_market_ticks(start_date, num_hours=hours):
+
+    for dt, base_price, base_demand in iterate_market_ticks(start_date, num_hours=hours):
+        # Read live scenario overrides from the dashboard
+        overrides = _read_scenario_overrides()
+        price = base_price * overrides["price_multiplier"]
+        demand = base_demand * overrides["demand_multiplier"]
+
         action_name = "HOLD"
         confidence = 1.0
-        
-        # Prepare state for API – MUST match src/api/schemas.py
+
+        # Call the FastAPI trading endpoint
         state = {
             "current_price": float(price),
             "forecasted_demand": float(demand),
             "battery_level": float(battery_level),
-            "account_balance": float(balance)
+            "account_balance": float(balance),
         }
-        
+
         try:
             response = requests.post(
                 "http://127.0.0.1:8000/api/v1/trade",
                 json=state,
-                timeout=2
+                timeout=2,
             )
             if response.status_code == 200:
                 data = response.json()
                 action_idx = data.get("action", 2)
-                # API Schema: 0: Buy, 1: Sell, 2: Hold
                 action_map = {0: "BUY", 1: "SELL", 2: "HOLD"}
                 action_name = action_map.get(action_idx, "HOLD")
                 confidence = data.get("confidence", 1.0)
             else:
-                print(f"⚠️ API Error at {dt}: {response.text}")
                 action_name = "HOLD"
-        except Exception as e:
-            # print(f"⚠️ App Exception at {dt}: {e}")
+        except Exception:
             action_name = "HOLD"
-            
-        # 4. Perform Action & Update Financials (Local simulation of trade outcome)
-        if action_name == "BUY" and balance >= price:
-            if battery_level < 50.0:
-                battery_level += 1.0
-                balance -= price
-        elif action_name == "SELL" and battery_level >= 1.0:
-            battery_level -= 1.0
-            balance += price
-            
-        # 5. Log entry for Dashboard
+
+        # Apply action using the SAME trade volume as the training environment
+        cost = trade_volume * price
+        revenue = trade_volume * price
+
+        if action_name == "BUY":
+            if balance >= cost and battery_level + trade_volume <= max_battery:
+                battery_level += trade_volume
+                balance -= cost
+            # else: agent tried to buy but can't — mirrors the env penalty path
+        elif action_name == "SELL":
+            if battery_level >= trade_volume:
+                battery_level -= trade_volume
+                balance += revenue
+
+        # Apply external demand (mirrors env step logic)
+        unmet_demand = 0.0
+        if battery_level >= demand:
+            battery_level -= demand
+        else:
+            unmet_demand = demand - battery_level
+            battery_level = 0.0
+
+        # Log entry
         log_entry = {
             "sim_datetime": dt.strftime("%Y-%m-%d %H:%M:%S"),
-            "price": price,
-            "demand": demand,
+            "price": round(price, 4),
+            "demand": round(demand, 4),
             "action_name": action_name,
-            "battery_level": battery_level,
-            "account_balance": balance,
-            "cumulative_profit": balance - 10000.0,
-            "unmet_demand": 0.0,
-            "reward": 0.0
+            "battery_level": round(battery_level, 2),
+            "account_balance": round(balance, 2),
+            "cumulative_profit": round(balance - initial_balance, 2),
+            "unmet_demand": round(unmet_demand, 2),
+            "reward": 0.0,
+            "price_multiplier": overrides["price_multiplier"],
+            "demand_multiplier": overrides["demand_multiplier"],
         }
         history.append(log_entry)
-        
-        # 6. Update Live Log File
+
         pd.DataFrame(history).to_csv(log_file, index=False)
-            
-        # 7. Sleep for effect
+
         time.sleep(1.0 / speed)
-        
+
         if len(history) % 24 == 0:
-            print(f"✅ {dt}: Balance=${balance:.2f}, P&L=${(balance-10000.0):.2f}")
+            print(
+                f"✅ {dt}: Balance=${balance:.2f}, "
+                f"Battery={battery_level:.1f} kWh, "
+                f"P&L=${(balance - initial_balance):.2f}"
+            )
+
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser()
+    parser = argparse.ArgumentParser(description="Energy Trading Agent simulation runner")
     parser.add_argument("--speed", type=float, default=1, help="Sim speed: 1 real sec = X sim hours")
     parser.add_argument("--hours", type=int, default=168, help="Total sim hours")
     args = parser.parse_args()
-    
+
     run_simulation(speed=args.speed, hours=args.hours)

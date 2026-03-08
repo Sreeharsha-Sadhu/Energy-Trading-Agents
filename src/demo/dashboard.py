@@ -5,10 +5,14 @@ Streamlit live dashboard for the Energy Trading Agent demo.
 Reads the simulation log CSV produced by run_simulation.py and renders
 live KPI cards and Plotly time-series charts that auto-refresh.
 
+Includes a sidebar for injecting real-time scenario overrides (price and
+demand multipliers) that the background simulation script picks up dynamically.
+
 Usage:
     streamlit run src/demo/dashboard.py
 """
 
+import json
 import os
 import time
 
@@ -27,6 +31,7 @@ st.set_page_config(
 )
 
 LOG_FILE = "data/demo_logs/simulation_log.csv"
+SCENARIO_CONTROL_FILE = "data/demo_logs/scenario_control.json"
 REFRESH_INTERVAL = 2  # seconds
 
 
@@ -47,8 +52,113 @@ def load_log() -> pd.DataFrame:
         return pd.DataFrame()
 
 
+def write_scenario_overrides(price_mult: float, demand_mult: float):
+    """Write scenario overrides to the shared JSON control file."""
+    os.makedirs(os.path.dirname(SCENARIO_CONTROL_FILE), exist_ok=True)
+    with open(SCENARIO_CONTROL_FILE, "w") as f:
+        json.dump(
+            {"price_multiplier": price_mult, "demand_multiplier": demand_mult},
+            f,
+        )
+
+
 ACTION_COLORS = {"BUY": "#00c853", "SELL": "#ff1744", "HOLD": "#ffab00"}
 ACTION_SYMBOLS = {"BUY": "triangle-up", "SELL": "triangle-down", "HOLD": "circle"}
+
+# Preset scenario configurations
+SCENARIO_PRESETS = {
+    "🌤️ Normal Market": {"price_multiplier": 1.0, "demand_multiplier": 1.0},
+    "📈 Price Spike": {"price_multiplier": 2.5, "demand_multiplier": 1.0},
+    "📉 Price Crash": {"price_multiplier": 0.3, "demand_multiplier": 1.0},
+    "🔥 Demand Surge": {"price_multiplier": 1.0, "demand_multiplier": 2.5},
+    "❄️ Low Demand": {"price_multiplier": 1.0, "demand_multiplier": 0.4},
+    "⚡ Crisis: High Price + High Demand": {"price_multiplier": 2.5, "demand_multiplier": 2.5},
+    "💰 Opportunity: Low Price + Low Demand": {"price_multiplier": 0.3, "demand_multiplier": 0.4},
+}
+
+
+# ---------------------------------------------------------------------------
+# Sidebar — Scenario Controls
+# ---------------------------------------------------------------------------
+def render_sidebar():
+    with st.sidebar:
+        st.markdown("## ⚙️ Environment Overrides")
+        st.markdown(
+            '<p style="color: #8892b0; font-size: 13px;">'
+            "Adjust market conditions in real-time. The simulation picks up "
+            "these values on every tick.</p>",
+            unsafe_allow_html=True,
+        )
+
+        # Preset buttons
+        st.markdown("#### 🎯 Quick Presets")
+        for preset_name, preset_vals in SCENARIO_PRESETS.items():
+            if st.button(preset_name, key=f"preset_{preset_name}", use_container_width=True):
+                st.session_state["price_mult"] = preset_vals["price_multiplier"]
+                st.session_state["demand_mult"] = preset_vals["demand_multiplier"]
+                write_scenario_overrides(
+                    preset_vals["price_multiplier"],
+                    preset_vals["demand_multiplier"],
+                )
+
+        st.markdown("---")
+        st.markdown("#### 🎚️ Fine-Tune Controls")
+
+        # Initialize session state defaults
+        if "price_mult" not in st.session_state:
+            st.session_state["price_mult"] = 1.0
+        if "demand_mult" not in st.session_state:
+            st.session_state["demand_mult"] = 1.0
+
+        price_mult = st.slider(
+            "Price Multiplier",
+            min_value=0.1,
+            max_value=3.0,
+            value=st.session_state["price_mult"],
+            step=0.1,
+            key="price_slider",
+            help="Scales the base market price. >1.0 = expensive energy, <1.0 = cheap energy.",
+        )
+        demand_mult = st.slider(
+            "Demand Multiplier",
+            min_value=0.1,
+            max_value=3.0,
+            value=st.session_state["demand_mult"],
+            step=0.1,
+            key="demand_slider",
+            help="Scales the base demand. >1.0 = high demand period, <1.0 = low demand.",
+        )
+
+        # Write overrides on every slider change
+        write_scenario_overrides(price_mult, demand_mult)
+
+        # Show current active scenario
+        st.markdown("---")
+        st.markdown("#### 📊 Active Scenario")
+
+        price_color = "#ff1744" if price_mult > 1.5 else "#00c853" if price_mult < 0.7 else "#ffab00"
+        demand_color = "#ff1744" if demand_mult > 1.5 else "#00c853" if demand_mult < 0.7 else "#ffab00"
+
+        st.markdown(
+            f'<div style="background: #1a1a2e; border-radius: 12px; padding: 16px; '
+            f'border: 1px solid rgba(255,255,255,0.08);">'
+            f'<p style="margin: 0 0 8px 0; color: #8892b0; font-size: 12px;">PRICE MULTIPLIER</p>'
+            f'<p style="margin: 0 0 12px 0; color: {price_color}; font-size: 24px; font-weight: 700;">'
+            f"{price_mult:.1f}x</p>"
+            f'<p style="margin: 0 0 8px 0; color: #8892b0; font-size: 12px;">DEMAND MULTIPLIER</p>'
+            f'<p style="margin: 0; color: {demand_color}; font-size: 24px; font-weight: 700;">'
+            f"{demand_mult:.1f}x</p>"
+            f"</div>",
+            unsafe_allow_html=True,
+        )
+
+        st.markdown("---")
+        st.markdown(
+            '<p style="color: #8892b0; font-size: 11px;">'
+            "💡 Try a <b>Price Spike</b> to see the agent switch to selling, "
+            "or a <b>Demand Surge</b> to watch it stockpile energy.</p>",
+            unsafe_allow_html=True,
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -90,6 +200,17 @@ def render_header():
             color: #8892b0;
             font-size: 14px;
         }
+        .scenario-badge {
+            display: inline-block;
+            background: rgba(187,134,252,0.15);
+            border: 1px solid #bb86fc;
+            border-radius: 8px;
+            padding: 4px 12px;
+            color: #bb86fc;
+            font-size: 12px;
+            font-weight: 600;
+            margin-left: 12px;
+        }
         </style>
         """,
         unsafe_allow_html=True,
@@ -113,7 +234,6 @@ def render_kpis(df: pd.DataFrame):
     total_unmet = df["unmet_demand"].sum()
     num_buys = (df["action_name"] == "BUY").sum()
     num_sells = (df["action_name"] == "SELL").sum()
-    num_holds = (df["action_name"] == "HOLD").sum()
 
     profit_class = "positive" if cum_profit >= 0 else "negative"
 
@@ -142,7 +262,6 @@ def render_price_demand_chart(df: pd.DataFrame):
 
     fig = make_subplots(specs=[[{"secondary_y": True}]])
 
-    # Price line
     fig.add_trace(
         go.Scatter(
             x=df["sim_datetime"],
@@ -155,7 +274,6 @@ def render_price_demand_chart(df: pd.DataFrame):
         secondary_y=False,
     )
 
-    # Demand line
     fig.add_trace(
         go.Scatter(
             x=df["sim_datetime"],
@@ -166,7 +284,6 @@ def render_price_demand_chart(df: pd.DataFrame):
         secondary_y=True,
     )
 
-    # Action markers on price axis
     for action_name, color in ACTION_COLORS.items():
         mask = df["action_name"] == action_name
         if mask.any():
@@ -263,7 +380,6 @@ def render_cumulative_profit_chart(df: pd.DataFrame):
         )
     )
 
-    # zero line
     fig.add_hline(y=0, line_dash="dash", line_color="rgba(255,255,255,0.3)")
 
     fig.update_layout(
@@ -285,7 +401,8 @@ def render_action_log(df: pd.DataFrame):
     if df.empty:
         return
     st.subheader("📋 Recent Actions")
-    display = df[["sim_datetime", "price", "demand", "action_name", "battery_level", "account_balance", "reward"]].tail(20).copy()
+    display_cols = ["sim_datetime", "price", "demand", "action_name", "battery_level", "account_balance", "reward"]
+    display = df[display_cols].tail(20).copy()
     display.columns = ["Time", "Price", "Demand", "Action", "Battery", "Balance", "Reward"]
     st.dataframe(display, use_container_width=True, hide_index=True)
 
@@ -294,6 +411,7 @@ def render_action_log(df: pd.DataFrame):
 # Main
 # ---------------------------------------------------------------------------
 def main():
+    render_sidebar()
     render_header()
 
     df = load_log()
