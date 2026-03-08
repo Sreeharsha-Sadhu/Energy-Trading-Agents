@@ -1,6 +1,4 @@
-#!/usr/bin/env python3
-"""
-Simulation orchestrator for the Energy Trading Agent demo.
+"""Simulation orchestrator for the Energy Trading Agent demo.
 
 Replays synthetic market data, sends each tick to the FastAPI /api/v1/trade
 endpoint, applies the returned action locally (mirroring the gym env logic),
@@ -41,23 +39,25 @@ def _read_scenario_overrides() -> dict:
         return defaults
 
 
-def run_simulation(speed: float = 1.0, hours: int = 168, log_dir: str = "data/demo_logs"):
+def run_simulation(
+    speed: float = 1.0, hours: int = 168, log_dir: str = "data/demo_logs"
+):
     """Run the trading simulation loop.
 
     Args:
         speed: Simulation speed multiplier (1 real sec = X sim hours).
         hours: Total number of simulation hours to run.
         log_dir: Directory for the CSV log consumed by the dashboard.
+
     """
     os.makedirs(log_dir, exist_ok=True)
     log_file = os.path.join(log_dir, "simulation_log.csv")
 
     start_date = datetime.now()
 
-    # Use the SAME initial values as the training environment
-    balance = settings.INITIAL_ACCOUNT_BALANCE       # $100.0
-    battery_level = settings.INITIAL_BATTERY_KWH     # 10.0 kWh
-    trade_volume = settings.MAX_TRADE_VOLUME_KWH     # 5.0 kWh
+    balance = settings.INITIAL_ACCOUNT_BALANCE  # $100.0
+    battery_level = settings.INITIAL_BATTERY_KWH  # 10.0 kWh
+    trade_volume = settings.MAX_TRADE_VOLUME_KWH  # 5.0 kWh
     max_battery = settings.MAX_BATTERY_CAPACITY_KWH  # 50.0 kWh
     initial_balance = balance
 
@@ -65,19 +65,20 @@ def run_simulation(speed: float = 1.0, hours: int = 168, log_dir: str = "data/de
 
     print(f"🚀 Starting simulation: {hours} hours at {speed}x speed")
     print(f"   Initial balance: ${balance:.2f} | Battery: {battery_level:.1f} kWh")
-    print(f"   Trade volume: {trade_volume:.1f} kWh | Max battery: {max_battery:.1f} kWh")
+    print(
+        f"   Trade volume: {trade_volume:.1f} kWh | Max battery: {max_battery:.1f} kWh"
+    )
     print(f"📊 Logging to: {log_file}")
 
-    for dt, base_price, base_demand in iterate_market_ticks(start_date, num_hours=hours):
-        # Read live scenario overrides from the dashboard
+    for dt, base_price, base_demand in iterate_market_ticks(
+        start_date, num_hours=hours
+    ):
         overrides = _read_scenario_overrides()
         price = base_price * overrides["price_multiplier"]
         demand = base_demand * overrides["demand_multiplier"]
 
         action_name = "HOLD"
-        confidence = 1.0
 
-        # Call the FastAPI trading endpoint
         state = {
             "current_price": float(price),
             "forecasted_demand": float(demand),
@@ -96,13 +97,12 @@ def run_simulation(speed: float = 1.0, hours: int = 168, log_dir: str = "data/de
                 action_idx = data.get("action", 2)
                 action_map = {0: "BUY", 1: "SELL", 2: "HOLD"}
                 action_name = action_map.get(action_idx, "HOLD")
-                confidence = data.get("confidence", 1.0)
+                data.get("confidence", 1.0)
             else:
                 action_name = "HOLD"
         except Exception:
             action_name = "HOLD"
 
-        # Apply action using the SAME trade volume as the training environment
         cost = trade_volume * price
         revenue = trade_volume * price
 
@@ -110,13 +110,11 @@ def run_simulation(speed: float = 1.0, hours: int = 168, log_dir: str = "data/de
             if balance >= cost and battery_level + trade_volume <= max_battery:
                 battery_level += trade_volume
                 balance -= cost
-            # else: agent tried to buy but can't — mirrors the env penalty path
         elif action_name == "SELL":
             if battery_level >= trade_volume:
                 battery_level -= trade_volume
                 balance += revenue
 
-        # Apply external demand (mirrors env step logic)
         unmet_demand = 0.0
         if battery_level >= demand:
             battery_level -= demand
@@ -124,7 +122,6 @@ def run_simulation(speed: float = 1.0, hours: int = 168, log_dir: str = "data/de
             unmet_demand = demand - battery_level
             battery_level = 0.0
 
-        # Log entry
         log_entry = {
             "sim_datetime": dt.strftime("%Y-%m-%d %H:%M:%S"),
             "price": round(price, 4),
@@ -153,8 +150,12 @@ def run_simulation(speed: float = 1.0, hours: int = 168, log_dir: str = "data/de
 
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="Energy Trading Agent simulation runner")
-    parser.add_argument("--speed", type=float, default=1, help="Sim speed: 1 real sec = X sim hours")
+    parser = argparse.ArgumentParser(
+        description="Energy Trading Agent simulation runner"
+    )
+    parser.add_argument(
+        "--speed", type=float, default=1, help="Sim speed: 1 real sec = X sim hours"
+    )
     parser.add_argument("--hours", type=int, default=168, help="Total sim hours")
     args = parser.parse_args()
 

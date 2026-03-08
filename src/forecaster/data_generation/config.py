@@ -1,16 +1,13 @@
-# src/data_generation/config.py
+from typing import Any, Dict
+
 import pytz
-from typing import Dict, Any
 
 TZ = pytz.timezone("America/Los_Angeles")
 
-# Tracking file (relative to repo root)
 TRACKING_FILE = "Docs/data_generation_tracking.json"
 
-# Default output filename
 DEFAULT_OUTPUT_CSV = "data/san_diego_energy_load_data.csv"
 
-# Load profiles and rate groups (kept from original)
 LOAD_PROFILES: Dict[str, Dict[str, list]] = {
     "Residential": {
         "non_solar": [
@@ -146,4 +143,3 @@ LOSS_FACTORS: Dict[str, float] = {
     "Small Scale Industries": 0.04,
     "Medium Scale Industries": 0.03,
 }
-

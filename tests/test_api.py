@@ -1,7 +1,6 @@
-import pytest
 from fastapi.testclient import TestClient
+
 from src.main import app
-from src.api.schemas import MarketState
 
 client = TestClient(app)
 
@@ -35,9 +34,6 @@ def test_trade_endpoint_invalid_payload():
 
 
 def test_trade_endpoint_missing_fields():
-    payload = {
-        "current_price": 0.5
-        # Missing other fields
-    }
+    payload = {"current_price": 0.5}
     response = client.post("/api/v1/trade", json=payload)
     assert response.status_code == 422

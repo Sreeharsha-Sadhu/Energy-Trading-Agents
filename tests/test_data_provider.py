@@ -5,8 +5,8 @@ from datetime import datetime
 import pandas as pd
 
 from src.demo.data_provider import (
-    _compute_spot_price,
     _compute_demand,
+    _compute_spot_price,
     generate_hourly_timeline,
     iterate_market_ticks,
 )
@@ -26,10 +26,11 @@ def test_demand_is_positive():
 
 def test_demand_higher_during_peak_hours():
     """Evening demand (hour 17) should generally be higher than early morning (hour 3)."""
-    # Average over multiple samples to account for noise
     evening_demands = [_compute_demand(17, 7, 2) for _ in range(50)]
     morning_demands = [_compute_demand(3, 7, 2) for _ in range(50)]
-    assert sum(evening_demands) / len(evening_demands) > sum(morning_demands) / len(morning_demands)
+    assert sum(evening_demands) / len(evening_demands) > sum(morning_demands) / len(
+        morning_demands
+    )
 
 
 def test_generate_hourly_timeline_shape():

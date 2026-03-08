@@ -1,11 +1,12 @@
-from src.agent.ppo_model import train_agent, predict_action
-from src.config import settings
 import os
+
 import numpy as np
+
+from src.agent.ppo_model import predict_action, train_agent
+from src.config import settings
 
 
 def test_training_and_prediction():
-    # temporarily reduce timesteps for quick test
     original_timesteps = settings.TOTAL_TIMESTEPS
     settings.TOTAL_TIMESTEPS = 100
 

@@ -1,6 +1,4 @@
-#!/usr/bin/env python3
-"""
-Streamlit live dashboard for the Energy Trading Agent demo.
+"""Streamlit live dashboard for the Energy Trading Agent demo.
 
 Reads the simulation log CSV produced by run_simulation.py and renders
 live KPI cards and Plotly time-series charts that auto-refresh.
@@ -18,11 +16,10 @@ import time
 
 import pandas as pd
 import plotly.graph_objects as go
-from plotly.subplots import make_subplots
 import streamlit as st
+from plotly.subplots import make_subplots
 
 # ---------------------------------------------------------------------------
-# Page config
 # ---------------------------------------------------------------------------
 st.set_page_config(
     page_title="⚡ Energy Trading Agent — Live Demo",
@@ -36,10 +33,10 @@ REFRESH_INTERVAL = 2  # seconds
 
 
 # ---------------------------------------------------------------------------
-# Helpers
 # ---------------------------------------------------------------------------
 @st.cache_data(ttl=REFRESH_INTERVAL)
 def load_log() -> pd.DataFrame:
+    """Load Log."""
     if not os.path.exists(LOG_FILE):
         return pd.DataFrame()
     try:
@@ -65,22 +62,27 @@ def write_scenario_overrides(price_mult: float, demand_mult: float):
 ACTION_COLORS = {"BUY": "#00c853", "SELL": "#ff1744", "HOLD": "#ffab00"}
 ACTION_SYMBOLS = {"BUY": "triangle-up", "SELL": "triangle-down", "HOLD": "circle"}
 
-# Preset scenario configurations
 SCENARIO_PRESETS = {
     "🌤️ Normal Market": {"price_multiplier": 1.0, "demand_multiplier": 1.0},
     "📈 Price Spike": {"price_multiplier": 2.5, "demand_multiplier": 1.0},
     "📉 Price Crash": {"price_multiplier": 0.3, "demand_multiplier": 1.0},
     "🔥 Demand Surge": {"price_multiplier": 1.0, "demand_multiplier": 2.5},
     "❄️ Low Demand": {"price_multiplier": 1.0, "demand_multiplier": 0.4},
-    "⚡ Crisis: High Price + High Demand": {"price_multiplier": 2.5, "demand_multiplier": 2.5},
-    "💰 Opportunity: Low Price + Low Demand": {"price_multiplier": 0.3, "demand_multiplier": 0.4},
+    "⚡ Crisis: High Price + High Demand": {
+        "price_multiplier": 2.5,
+        "demand_multiplier": 2.5,
+    },
+    "💰 Opportunity: Low Price + Low Demand": {
+        "price_multiplier": 0.3,
+        "demand_multiplier": 0.4,
+    },
 }
 
 
 # ---------------------------------------------------------------------------
-# Sidebar — Scenario Controls
 # ---------------------------------------------------------------------------
 def render_sidebar():
+    """Render Sidebar."""
     with st.sidebar:
         st.markdown("## ⚙️ Environment Overrides")
         st.markdown(
@@ -90,10 +92,11 @@ def render_sidebar():
             unsafe_allow_html=True,
         )
 
-        # Preset buttons
         st.markdown("#### 🎯 Quick Presets")
         for preset_name, preset_vals in SCENARIO_PRESETS.items():
-            if st.button(preset_name, key=f"preset_{preset_name}", use_container_width=True):
+            if st.button(
+                preset_name, key=f"preset_{preset_name}", use_container_width=True
+            ):
                 st.session_state["price_mult"] = preset_vals["price_multiplier"]
                 st.session_state["demand_mult"] = preset_vals["demand_multiplier"]
                 write_scenario_overrides(
@@ -104,7 +107,6 @@ def render_sidebar():
         st.markdown("---")
         st.markdown("#### 🎚️ Fine-Tune Controls")
 
-        # Initialize session state defaults
         if "price_mult" not in st.session_state:
             st.session_state["price_mult"] = 1.0
         if "demand_mult" not in st.session_state:
@@ -129,15 +131,25 @@ def render_sidebar():
             help="Scales the base demand. >1.0 = high demand period, <1.0 = low demand.",
         )
 
-        # Write overrides on every slider change
         write_scenario_overrides(price_mult, demand_mult)
 
-        # Show current active scenario
         st.markdown("---")
         st.markdown("#### 📊 Active Scenario")
 
-        price_color = "#ff1744" if price_mult > 1.5 else "#00c853" if price_mult < 0.7 else "#ffab00"
-        demand_color = "#ff1744" if demand_mult > 1.5 else "#00c853" if demand_mult < 0.7 else "#ffab00"
+        price_color = (
+            "#ff1744"
+            if price_mult > 1.5
+            else "#00c853"
+            if price_mult < 0.7
+            else "#ffab00"
+        )
+        demand_color = (
+            "#ff1744"
+            if demand_mult > 1.5
+            else "#00c853"
+            if demand_mult < 0.7
+            else "#ffab00"
+        )
 
         st.markdown(
             f'<div style="background: #1a1a2e; border-radius: 12px; padding: 16px; '
@@ -162,9 +174,9 @@ def render_sidebar():
 
 
 # ---------------------------------------------------------------------------
-# Layout
 # ---------------------------------------------------------------------------
 def render_header():
+    """Render Header."""
     st.markdown(
         """
         <style>
@@ -223,8 +235,11 @@ def render_header():
 
 
 def render_kpis(df: pd.DataFrame):
+    """Render Kpis."""
     if df.empty:
-        st.info("⏳ Waiting for simulation data…  Run `python scripts/run_simulation.py` to start.")
+        st.info(
+            "⏳ Waiting for simulation data…  Run `python scripts/run_simulation.py` to start."
+        )
         return
 
     latest = df.iloc[-1]
@@ -244,19 +259,24 @@ def render_kpis(df: pd.DataFrame):
         ("Cumulative P&L", f"${cum_profit:,.2f}", profit_class),
         ("Buys", str(num_buys), ""),
         ("Sells", str(num_sells), ""),
-        ("Unmet Demand", f"{total_unmet:.1f} kWh", "negative" if total_unmet > 0 else ""),
+        (
+            "Unmet Demand",
+            f"{total_unmet:.1f} kWh",
+            "negative" if total_unmet > 0 else "",
+        ),
     ]
     for col, (label, value, cls) in zip(cols, kpis):
         col.markdown(
             f'<div class="kpi-card">'
             f'<div class="kpi-label">{label}</div>'
             f'<div class="kpi-value {cls}">{value}</div>'
-            f'</div>',
+            f"</div>",
             unsafe_allow_html=True,
         )
 
 
 def render_price_demand_chart(df: pd.DataFrame):
+    """Render Price Demand Chart."""
     if df.empty:
         return
 
@@ -314,13 +334,20 @@ def render_price_demand_chart(df: pd.DataFrame):
         margin=dict(l=20, r=20, t=50, b=40),
     )
     fig.update_xaxes(title_text="Simulation Time", gridcolor="rgba(255,255,255,0.05)")
-    fig.update_yaxes(title_text="Price ($/kWh)", secondary_y=False, gridcolor="rgba(255,255,255,0.05)")
-    fig.update_yaxes(title_text="Demand (kWh)", secondary_y=True, gridcolor="rgba(255,255,255,0.05)")
+    fig.update_yaxes(
+        title_text="Price ($/kWh)",
+        secondary_y=False,
+        gridcolor="rgba(255,255,255,0.05)",
+    )
+    fig.update_yaxes(
+        title_text="Demand (kWh)", secondary_y=True, gridcolor="rgba(255,255,255,0.05)"
+    )
 
     st.plotly_chart(fig, use_container_width=True)
 
 
 def render_battery_balance_chart(df: pd.DataFrame):
+    """Render Battery Balance Chart."""
     if df.empty:
         return
 
@@ -358,13 +385,20 @@ def render_battery_balance_chart(df: pd.DataFrame):
         margin=dict(l=20, r=20, t=50, b=40),
     )
     fig.update_xaxes(title_text="Simulation Time", gridcolor="rgba(255,255,255,0.05)")
-    fig.update_yaxes(title_text="Battery (kWh)", secondary_y=False, gridcolor="rgba(255,255,255,0.05)")
-    fig.update_yaxes(title_text="Balance ($)", secondary_y=True, gridcolor="rgba(255,255,255,0.05)")
+    fig.update_yaxes(
+        title_text="Battery (kWh)",
+        secondary_y=False,
+        gridcolor="rgba(255,255,255,0.05)",
+    )
+    fig.update_yaxes(
+        title_text="Balance ($)", secondary_y=True, gridcolor="rgba(255,255,255,0.05)"
+    )
 
     st.plotly_chart(fig, use_container_width=True)
 
 
 def render_cumulative_profit_chart(df: pd.DataFrame):
+    """Render Cumulative Profit Chart."""
     if df.empty:
         return
 
@@ -398,19 +432,36 @@ def render_cumulative_profit_chart(df: pd.DataFrame):
 
 
 def render_action_log(df: pd.DataFrame):
+    """Render Action Log."""
     if df.empty:
         return
     st.subheader("📋 Recent Actions")
-    display_cols = ["sim_datetime", "price", "demand", "action_name", "battery_level", "account_balance", "reward"]
+    display_cols = [
+        "sim_datetime",
+        "price",
+        "demand",
+        "action_name",
+        "battery_level",
+        "account_balance",
+        "reward",
+    ]
     display = df[display_cols].tail(20).copy()
-    display.columns = ["Time", "Price", "Demand", "Action", "Battery", "Balance", "Reward"]
+    display.columns = [
+        "Time",
+        "Price",
+        "Demand",
+        "Action",
+        "Battery",
+        "Balance",
+        "Reward",
+    ]
     st.dataframe(display, use_container_width=True, hide_index=True)
 
 
 # ---------------------------------------------------------------------------
-# Main
 # ---------------------------------------------------------------------------
 def main():
+    """Main."""
     render_sidebar()
     render_header()
 
@@ -430,7 +481,6 @@ def main():
 
     render_action_log(df)
 
-    # Auto-refresh
     time.sleep(REFRESH_INTERVAL)
     st.rerun()
 

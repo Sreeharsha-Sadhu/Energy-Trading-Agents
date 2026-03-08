@@ -1,6 +1,4 @@
-#!/usr/bin/env python3
-"""
-Train the PPO energy trading agent used by the live demo.
+"""Train the PPO energy trading agent used by the live demo.
 
 Usage:
     PYTHONPATH=. uv run scripts/train_demo_agent.py --timesteps 200000
@@ -15,6 +13,7 @@ from src.envs.energy_trading_env import EnergyTradingEnv
 
 
 def main():
+    """Main."""
     parser = argparse.ArgumentParser(description="Train the PPO demo agent")
     parser.add_argument(
         "--timesteps",

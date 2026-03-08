@@ -1,11 +1,9 @@
-# src/modeling/model_definitions.py
-
-import xgboost as xgb
 import lightgbm as lgb
-from sklearn.model_selection import train_test_split
+import xgboost as xgb
 
 
 def get_xgboost_model(params=None):
+    """Get Xgboost Model."""
     default_params = {
         "objective": "reg:squarederror",
         "learning_rate": 0.05,
@@ -18,6 +16,7 @@ def get_xgboost_model(params=None):
 
 
 def get_lightgbm_model(params=None):
+    """Get Lightgbm Model."""
     default_params = {
         "objective": "regression",
         "learning_rate": 0.05,

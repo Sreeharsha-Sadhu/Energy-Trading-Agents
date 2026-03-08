@@ -1,16 +1,13 @@
-# src/data_generation/writer.py
 import os
-from typing import List, Dict
+from typing import Dict, List
 
 import pandas as pd
 
 
 def write_data_chunk(
-        data_chunk: List[Dict], output_filename: str, is_first_chunk: bool = False
+    data_chunk: List[Dict], output_filename: str, is_first_chunk: bool = False
 ) -> None:
-    """
-    Write a chunk of records to CSV. Creates parent dir if needed.
-    """
+    """Write a chunk of records to CSV. Creates parent dir if needed."""
     if not data_chunk:
         return
     os.makedirs(os.path.dirname(output_filename) or ".", exist_ok=True)
