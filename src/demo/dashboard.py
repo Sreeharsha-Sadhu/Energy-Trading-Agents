@@ -48,12 +48,16 @@ def load_log() -> pd.DataFrame:
         return pd.DataFrame()
 
 
-def write_scenario_overrides(price_mult: float, demand_mult: float):
+def write_scenario_overrides(price_mult: float, demand_mult: float, scenario_name: str = ""):
     """Write scenario overrides to the shared JSON control file."""
     os.makedirs(os.path.dirname(SCENARIO_CONTROL_FILE), exist_ok=True)
     with open(SCENARIO_CONTROL_FILE, "w") as f:
         json.dump(
-            {"price_multiplier": price_mult, "demand_multiplier": demand_mult},
+            {
+                "price_multiplier": price_mult,
+                "demand_multiplier": demand_mult,
+                "scenario_name": scenario_name,
+            },
             f,
         )
 
@@ -97,9 +101,11 @@ def render_sidebar():
             ):
                 st.session_state["price_mult"] = preset_vals["price_multiplier"]
                 st.session_state["demand_mult"] = preset_vals["demand_multiplier"]
+                st.session_state["active_scenario"] = preset_name
                 write_scenario_overrides(
                     preset_vals["price_multiplier"],
                     preset_vals["demand_multiplier"],
+                    preset_name,
                 )
 
         st.markdown("---")
@@ -129,7 +135,23 @@ def render_sidebar():
             help="Scales the base demand. >1.0 = high demand period, <1.0 = low demand.",
         )
 
-        write_scenario_overrides(price_mult, demand_mult)
+        if (
+            price_mult != st.session_state.get("last_price_mult", 1.0)
+            or demand_mult != st.session_state.get("last_demand_mult", 1.0)
+        ):
+            # If values changed (slider moved), set scenario to Custom
+            st.session_state["active_scenario"] = "Custom Adjustment"
+            st.session_state["last_price_mult"] = price_mult
+            st.session_state["last_demand_mult"] = demand_mult
+
+        write_scenario_overrides(
+            price_mult,
+            demand_mult,
+            st.session_state.get("active_scenario", ""),
+        )
+        # Update session state to match slider for button sync
+        st.session_state["price_mult"] = price_mult
+        st.session_state["demand_mult"] = demand_mult
 
         st.markdown("---")
         st.markdown("#### 📊 Active Scenario")
@@ -276,6 +298,30 @@ def render_price_demand_chart(df: pd.DataFrame):
         return
 
     fig = make_subplots(specs=[[{"secondary_y": True}]])
+
+    # Add scenario markers
+    if "active_scenario" in df.columns:
+        scenario_points = df[df["active_scenario"].notna() & (df["active_scenario"] != "")]
+        for row in scenario_points.itertuples(index=False):
+                ts = row.sim_datetime.strftime("%Y-%m-%d %H:%M:%S")
+                fig.add_vline(
+                    x=ts,
+                    line_dash="dash",
+                    line_color="#ffffff",
+                    opacity=0.5,
+                )
+                fig.add_annotation(
+                    x=ts,
+                    text=f" 💡 {row.active_scenario}",
+                    showarrow=False,
+                    xref="x",
+                    yref="paper",
+                    y=1.0,
+                    xanchor="left",
+                    yanchor="top",
+                    font=dict(color="#ffffff", size=10),
+                    bgcolor="rgba(26,26,46,0.8)",
+                )
 
     fig.add_trace(
         go.Scatter(
@@ -434,6 +480,17 @@ def render_risk_chart(df: pd.DataFrame):
         return
 
     fig = go.Figure()
+
+    # Add scenario markers
+    if "active_scenario" in df.columns:
+        scenario_points = df[df["active_scenario"].notna() & (df["active_scenario"] != "")]
+        for _, row in scenario_points.iterrows():
+            fig.add_vline(
+                x=row["sim_datetime"].strftime("%Y-%m-%d %H:%M:%S"),
+                line_dash="dash",
+                line_color="#ffffff",
+                opacity=0.3,
+            )
     fig.add_trace(
         go.Scatter(
             x=df["sim_datetime"],

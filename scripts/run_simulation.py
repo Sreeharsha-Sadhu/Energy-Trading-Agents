@@ -36,6 +36,7 @@ def _read_scenario_overrides() -> dict:
         return {
             "price_multiplier": float(data.get("price_multiplier", 1.0)),
             "demand_multiplier": float(data.get("demand_multiplier", 1.0)),
+            "scenario_name": str(data.get("scenario_name", "")),
         }
     except Exception:
         return defaults
@@ -68,7 +69,7 @@ def run_simulation(
     _VARIANCE_MIN_SAMPLES = 5
     _VARIANCE_PENALTY_SCALE = 0.05
     profit_history: collections.deque[float] = collections.deque(maxlen=_VARIANCE_WINDOW)
-
+    last_logged_scenario = ""
     history: list[dict] = []
 
     print(f"🚀 Starting simulation: {hours} hours at {speed}x speed")
@@ -148,6 +149,13 @@ def run_simulation(
         if len(profit_history) > _VARIANCE_MIN_SAMPLES:
             variance_penalty = float(np.std(profit_history)) * _VARIANCE_PENALTY_SCALE
 
+        # Reset scenario log once written to avoid duplicate lines on same scenario
+        current_scenario = overrides.get("scenario_name", "")
+        scenario_to_log = ""
+        if current_scenario != last_logged_scenario:
+            scenario_to_log = current_scenario
+        last_logged_scenario = current_scenario
+
         log_entry = {
             "sim_datetime": dt.strftime("%Y-%m-%d %H:%M:%S"),
             "price": round(price, 4),
@@ -161,6 +169,7 @@ def run_simulation(
             "variance_penalty": round(variance_penalty, 6),
             "price_multiplier": overrides["price_multiplier"],
             "demand_multiplier": overrides["demand_multiplier"],
+            "active_scenario": scenario_to_log,
         }
         history.append(log_entry)
 
