@@ -94,25 +94,34 @@ def run_simulation(
             )
             if response.status_code == 200:
                 data = response.json()
-                action_idx = data.get("action", 2)
-                action_map = {0: "BUY", 1: "SELL", 2: "HOLD"}
-                action_name = action_map.get(action_idx, "HOLD")
-                data.get("confidence", 1.0)
+                action_val = float(data.get("action", 0.0))
+                
+                # Proportional trade volume mirroring environment logic
+                step_trade_volume = abs(action_val) * settings.MAX_TRADE_VOLUME_KWH
+                
+                if action_val > 0.05:
+                    action_name = "BUY"
+                elif action_val < -0.05:
+                    action_name = "SELL"
+                else:
+                    action_name = "HOLD"
             else:
                 action_name = "HOLD"
+                step_trade_volume = 0.0
         except Exception:
             action_name = "HOLD"
+            step_trade_volume = 0.0
 
-        cost = trade_volume * price
-        revenue = trade_volume * price
+        cost = step_trade_volume * price
+        revenue = step_trade_volume * price
 
         if action_name == "BUY":
-            if balance >= cost and battery_level + trade_volume <= max_battery:
-                battery_level += trade_volume
+            if balance >= cost and battery_level + step_trade_volume <= max_battery:
+                battery_level += step_trade_volume
                 balance -= cost
         elif action_name == "SELL":
-            if battery_level >= trade_volume:
-                battery_level -= trade_volume
+            if battery_level >= step_trade_volume:
+                battery_level -= step_trade_volume
                 balance += revenue
 
         unmet_demand = 0.0

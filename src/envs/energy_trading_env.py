@@ -24,10 +24,11 @@ class EnergyTradingEnv(gym.Env):
 
         self.render_mode = render_mode
 
-        self.action_space = spaces.Discrete(3)
+        # Continuous action: -1.0 = 100% sell, +1.0 = 100% buy, ~0.0 = hold
+        self.action_space = spaces.Box(low=-1.0, high=1.0, shape=(1,), dtype=np.float32)
 
         self.observation_space = spaces.Box(
-            low=0.0, high=np.inf, shape=(4,), dtype=np.float32
+            low=0.0, high=1.0, shape=(4,), dtype=np.float32
         )
 
         self.current_price = 0.0
@@ -57,10 +58,10 @@ class EnergyTradingEnv(gym.Env):
         """Get Obs."""
         return np.array(
             [
-                self.current_price / 0.20,  # ~[0.25, 5.0]
-                self.forecasted_demand / 4.0,  # ~[0.125, 1.0]
-                self.battery_level / settings.MAX_BATTERY_CAPACITY_KWH,  # [0, 1]
-                self.account_balance / settings.INITIAL_ACCOUNT_BALANCE,  # ~[0, 2]
+                np.clip(self.current_price / 0.40, 0.0, 1.0),
+                np.clip(self.forecasted_demand / 5.0, 0.0, 1.0),
+                np.clip(self.battery_level / settings.MAX_BATTERY_CAPACITY_KWH, 0.0, 1.0),
+                np.clip(self.account_balance / (settings.INITIAL_ACCOUNT_BALANCE * 2), 0.0, 1.0),
             ],
             dtype=np.float32,
         )
@@ -73,45 +74,34 @@ class EnergyTradingEnv(gym.Env):
 
     def step(self, action):
         """Step."""
-        reward = 0.0
-        trade_volume = settings.MAX_TRADE_VOLUME_KWH
+        REWARD_SCALE = 0.01
+
+        action_val = float(np.clip(action[0], -1.0, 1.0))
+        trade_volume = abs(action_val) * settings.MAX_TRADE_VOLUME_KWH
         price = self.current_price
-        avg_price = self._avg_price()
         profit_from_trade = 0.0
         penalty = 0.0
 
-        if action == 0:  # Buy
+        if action_val > 0.05:  # Buy
             cost = trade_volume * price
             if (
                 self.account_balance >= cost
-                and self.battery_level + trade_volume
-                <= settings.MAX_BATTERY_CAPACITY_KWH
+                and self.battery_level + trade_volume <= settings.MAX_BATTERY_CAPACITY_KWH
             ):
                 self.account_balance -= cost
                 self.battery_level += trade_volume
                 profit_from_trade = -cost
-                if price < avg_price:
-                    reward += (avg_price - price) * trade_volume * 5.0
-                else:
-                    reward -= (price - avg_price) * trade_volume * 2.0
             else:
-                penalty = 5.0  # Penalty for invalid buy
+                penalty = 1.0  # Normalized penalty
 
-        elif action == 1:  # Sell
+        elif action_val < -0.05:  # Sell
             revenue = trade_volume * price
             if self.battery_level >= trade_volume:
                 self.battery_level -= trade_volume
                 self.account_balance += revenue
                 profit_from_trade = revenue
-                if price > avg_price:
-                    reward += (price - avg_price) * trade_volume * 5.0
-                else:
-                    reward -= (avg_price - price) * trade_volume * 2.0
             else:
-                penalty = 5.0  # Penalty for invalid sell
-
-        elif action == 2:  # Hold
-            reward += 0.01
+                penalty = 1.0  # Normalized penalty
 
         demand = self.forecasted_demand
         unmet_demand = 0.0
@@ -123,13 +113,9 @@ class EnergyTradingEnv(gym.Env):
 
         unmet_penalty = unmet_demand * price * 3.0
 
-        battery_ratio = self.battery_level / settings.MAX_BATTERY_CAPACITY_KWH
-        if 0.2 <= battery_ratio <= 0.8:
-            reward += 0.05  # Small bonus for healthy battery range
-        elif battery_ratio < 0.1:
-            reward -= 0.1  # Penalty for dangerously low battery
-
-        reward = reward + profit_from_trade - penalty - unmet_penalty
+        profit_reward = profit_from_trade * REWARD_SCALE
+        unmet_penalty_scaled = unmet_penalty * REWARD_SCALE
+        reward = profit_reward - penalty - unmet_penalty_scaled
 
         self.current_step += 1
 

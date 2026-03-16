@@ -17,6 +17,7 @@ def test_training_and_prediction():
 
         obs = np.array([0.5, 2.0, 10.0, 100.0], dtype=np.float32)
         action = predict_action(obs)
-        assert action in [0, 1, 2]
+        assert isinstance(action, float)
+        assert -1.0 <= action <= 1.0
     finally:
         settings.TOTAL_TIMESTEPS = original_timesteps

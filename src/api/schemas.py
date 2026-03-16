@@ -13,5 +13,5 @@ class MarketState(BaseModel):
 class TradeAction(BaseModel):
     """Tradeaction."""
 
-    action: int = Field(..., ge=0, le=2, description="0: Buy, 1: Sell, 2: Hold")
+    action: float = Field(..., ge=-1.0, le=1.0, description="-1.0: 100% Sell, 1.0: 100% Buy, 0.0: Hold")
     confidence: float = Field(default=1.0)

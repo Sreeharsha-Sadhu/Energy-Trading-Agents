@@ -13,14 +13,14 @@ async def trade_endpoint(state: MarketState):
     """Trade Endpoint."""
     obs = np.array(
         [
-            state.current_price / 0.20,
-            state.forecasted_demand / 4.0,
-            state.battery_level / settings.MAX_BATTERY_CAPACITY_KWH,
-            state.account_balance / settings.INITIAL_ACCOUNT_BALANCE,
+            np.clip(state.current_price / 0.40, 0.0, 1.0),
+            np.clip(state.forecasted_demand / 5.0, 0.0, 1.0),
+            np.clip(state.battery_level / settings.MAX_BATTERY_CAPACITY_KWH, 0.0, 1.0),
+            np.clip(state.account_balance / (settings.INITIAL_ACCOUNT_BALANCE * 2), 0.0, 1.0),
         ],
         dtype=np.float32,
     )
 
-    action_int = predict_action(obs)
+    action = predict_action(obs)
 
-    return TradeAction(action=action_int, confidence=1.0)
+    return TradeAction(action=action, confidence=1.0)
