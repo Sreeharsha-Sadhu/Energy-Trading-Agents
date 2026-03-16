@@ -10,7 +10,6 @@ router = APIRouter()
 
 @router.post("/trade", response_model=TradeAction)
 async def trade_endpoint(state: MarketState):
-    """Trade Endpoint."""
     obs = np.array(
         [
             np.clip(state.current_price / 0.40, 0.0, 1.0),

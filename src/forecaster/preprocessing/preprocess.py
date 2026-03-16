@@ -25,7 +25,6 @@ PROCESSED_FULL_PATH = PROCESSED_DIR / "processed_full.csv"
 def run_full_preprocessing(
     input_path: str = "data/san_diego_energy_load_data.csv", overwrite: bool = False
 ) -> pd.DataFrame:
-    """Run Full Preprocessing."""
     df = load_raw_dataset(input_path)
 
     df = ensure_timestamp(df)

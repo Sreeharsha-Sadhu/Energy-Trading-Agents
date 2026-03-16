@@ -11,7 +11,6 @@ MODELS_DIR = "models/"
 
 
 def get_features_and_target(df: pd.DataFrame, target="BaseLoad"):
-    """Get Features And Target."""
     drop_cols = [
         "TradeDate",
         "TradeTime",

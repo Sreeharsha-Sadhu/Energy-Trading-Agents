@@ -89,7 +89,6 @@ def get_hourly_load_factor(hour: int, load_profile: str) -> float:
 
 
 def get_seasonal_factor(month: int) -> float:
-    """Get Seasonal Factor."""
     seasonal_factors = {
         1: 0.8,
         2: 0.75,
@@ -108,11 +107,9 @@ def get_seasonal_factor(month: int) -> float:
 
 
 def get_weekend_factor(weekday: int) -> float:
-    """Get Weekend Factor."""
     return 0.7 if weekday >= 5 else 1.0
 
 
 def generate_meter_count(base_count: int, variation_sd: float = 0.05) -> int:
-    """Generate Meter Count."""
     variation = np.random.normal(1.0, variation_sd)
     return int(max(1, base_count * variation))

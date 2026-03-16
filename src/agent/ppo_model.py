@@ -9,7 +9,6 @@ from src.envs.energy_trading_env import EnergyTradingEnv
 
 
 def train_agent(env=None):
-    """Train Agent."""
     if env is None:
         env = make_vec_env(EnergyTradingEnv, n_envs=4)
 
@@ -23,10 +22,9 @@ def train_agent(env=None):
 
 
 def predict_action(obs: np.ndarray) -> float:
-    """Predict Action.
-
-    Returns the continuous action scalar in [-1.0, 1.0]. Returns 0.0 (hold)
-    if no trained model is found.
+    """Return the continuous action scalar in [-1.0, 1.0].
+    
+    Returns 0.0 (hold) if no trained model is found.
     """
     if not os.path.exists(settings.MODEL_SAVE_PATH):
         return 0.0

@@ -35,7 +35,6 @@ class EnergyLoadDataGenerator:
     def __init__(
         self, tracking_file: str = TRACKING_FILE, output_csv: str = DEFAULT_OUTPUT_CSV
     ):
-        """Init."""
         self.tz = TZ
         self.tracking_file = tracking_file
         self.output_csv = output_csv
@@ -47,7 +46,6 @@ class EnergyLoadDataGenerator:
     def get_business_days_ago(
         self, current_date: datetime.date, business_days: int
     ) -> datetime.date:
-        """Get Business Days Ago."""
         check_date = current_date
         while business_days > 0:
             check_date -= timedelta(days=1)
@@ -56,7 +54,6 @@ class EnergyLoadDataGenerator:
         return check_date
 
     def calculate_data_availability_dates(self, current_date: datetime.date):
-        """Calculate Data Availability Dates."""
         initial_cutoff = self.get_business_days_ago(current_date, 7)
         final_cutoff = self.get_business_days_ago(current_date, 48)
         return initial_cutoff, final_cutoff
@@ -64,7 +61,6 @@ class EnergyLoadDataGenerator:
     def generate_hourly_data(
         self, dt, load_profile: str, rate_group: str, is_solar: bool, year_index: int
     ) -> Dict[str, Any]:
-        """Generate Hourly Data."""
         base_params = self.base_consumption[load_profile]
         base_meters = base_params["meters_per_group"]
         growth_factor = (1.02) ** year_index
@@ -122,11 +118,9 @@ class EnergyLoadDataGenerator:
         }
 
     def load_tracking(self):
-        """Load Tracking."""
         return load_tracking_data(self.tracking_file)
 
     def save_tracking(self, tracking_data: Dict[str, Any]):
-        """Save Tracking."""
         save_tracking_data(self.tracking_file, tracking_data)
 
     def generate_incremental_dataset(
@@ -135,7 +129,6 @@ class EnergyLoadDataGenerator:
         force_full_regeneration: bool = False,
         chunk_size: int = 50000,
     ):
-        """Generate Incremental Dataset."""
         if current_date is None:
             current_date = datetime.now().date()
         elif isinstance(current_date, datetime):

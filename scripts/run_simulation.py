@@ -9,11 +9,13 @@ Streamlit dashboard sidebar.
 """
 
 import argparse
+import collections
 import json
 import os
 import time
 from datetime import datetime
 
+import numpy as np
 import pandas as pd
 import requests
 
@@ -55,11 +57,17 @@ def run_simulation(
 
     start_date = datetime.now()
 
-    balance = settings.INITIAL_ACCOUNT_BALANCE  # $100.0
-    battery_level = settings.INITIAL_BATTERY_KWH  # 10.0 kWh
-    trade_volume = settings.MAX_TRADE_VOLUME_KWH  # 5.0 kWh
-    max_battery = settings.MAX_BATTERY_CAPACITY_KWH  # 50.0 kWh
+    balance = settings.INITIAL_ACCOUNT_BALANCE
+    battery_level = settings.INITIAL_BATTERY_KWH
+    trade_volume = settings.MAX_TRADE_VOLUME_KWH
+    max_battery = settings.MAX_BATTERY_CAPACITY_KWH
     initial_balance = balance
+
+    # Mirror env constants so logged values match what PPO trained on.
+    _VARIANCE_WINDOW = 24
+    _VARIANCE_MIN_SAMPLES = 5
+    _VARIANCE_PENALTY_SCALE = 0.05
+    profit_history: collections.deque[float] = collections.deque(maxlen=_VARIANCE_WINDOW)
 
     history: list[dict] = []
 
@@ -114,15 +122,18 @@ def run_simulation(
 
         cost = step_trade_volume * price
         revenue = step_trade_volume * price
+        step_profit = 0.0
 
         if action_name == "BUY":
             if balance >= cost and battery_level + step_trade_volume <= max_battery:
                 battery_level += step_trade_volume
                 balance -= cost
+                step_profit = -cost
         elif action_name == "SELL":
             if battery_level >= step_trade_volume:
                 battery_level -= step_trade_volume
                 balance += revenue
+                step_profit = revenue
 
         unmet_demand = 0.0
         if battery_level >= demand:
@@ -130,6 +141,12 @@ def run_simulation(
         else:
             unmet_demand = demand - battery_level
             battery_level = 0.0
+
+        # Compute variance penalty matching the env reward shaping.
+        profit_history.append(step_profit)
+        variance_penalty = 0.0
+        if len(profit_history) > _VARIANCE_MIN_SAMPLES:
+            variance_penalty = float(np.std(profit_history)) * _VARIANCE_PENALTY_SCALE
 
         log_entry = {
             "sim_datetime": dt.strftime("%Y-%m-%d %H:%M:%S"),
@@ -141,6 +158,7 @@ def run_simulation(
             "cumulative_profit": round(balance - initial_balance, 2),
             "unmet_demand": round(unmet_demand, 2),
             "reward": 0.0,
+            "variance_penalty": round(variance_penalty, 6),
             "price_multiplier": overrides["price_multiplier"],
             "demand_multiplier": overrides["demand_multiplier"],
         }

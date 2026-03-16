@@ -36,7 +36,6 @@ REFRESH_INTERVAL = 2  # seconds
 # ---------------------------------------------------------------------------
 @st.cache_data(ttl=REFRESH_INTERVAL)
 def load_log() -> pd.DataFrame:
-    """Load Log."""
     if not os.path.exists(LOG_FILE):
         return pd.DataFrame()
     try:
@@ -82,7 +81,6 @@ SCENARIO_PRESETS = {
 # ---------------------------------------------------------------------------
 # ---------------------------------------------------------------------------
 def render_sidebar():
-    """Render Sidebar."""
     with st.sidebar:
         st.markdown("## ⚙️ Environment Overrides")
         st.markdown(
@@ -176,7 +174,6 @@ def render_sidebar():
 # ---------------------------------------------------------------------------
 # ---------------------------------------------------------------------------
 def render_header():
-    """Render Header."""
     st.markdown(
         """
         <style>
@@ -235,7 +232,6 @@ def render_header():
 
 
 def render_kpis(df: pd.DataFrame):
-    """Render Kpis."""
     if df.empty:
         st.info(
             "⏳ Waiting for simulation data…  Run `python scripts/run_simulation.py` to start."
@@ -276,7 +272,6 @@ def render_kpis(df: pd.DataFrame):
 
 
 def render_price_demand_chart(df: pd.DataFrame):
-    """Render Price Demand Chart."""
     if df.empty:
         return
 
@@ -347,7 +342,6 @@ def render_price_demand_chart(df: pd.DataFrame):
 
 
 def render_battery_balance_chart(df: pd.DataFrame):
-    """Render Battery Balance Chart."""
     if df.empty:
         return
 
@@ -398,7 +392,6 @@ def render_battery_balance_chart(df: pd.DataFrame):
 
 
 def render_cumulative_profit_chart(df: pd.DataFrame):
-    """Render Cumulative Profit Chart."""
     if df.empty:
         return
 
@@ -431,8 +424,43 @@ def render_cumulative_profit_chart(df: pd.DataFrame):
     st.plotly_chart(fig, use_container_width=True)
 
 
+def render_risk_chart(df: pd.DataFrame):
+    """Render a time-series of the rolling profit variance penalty.
+
+    The chart is skipped silently when the column does not exist so that
+    old CSV logs (without `variance_penalty`) still render without errors.
+    """
+    if df.empty or "variance_penalty" not in df.columns:
+        return
+
+    fig = go.Figure()
+    fig.add_trace(
+        go.Scatter(
+            x=df["sim_datetime"],
+            y=df["variance_penalty"],
+            name="Variance Penalty",
+            line=dict(color="#ff6e40", width=2),
+            fill="tozeroy",
+            fillcolor="rgba(255,110,64,0.12)",
+        )
+    )
+    fig.update_layout(
+        title="Risk / Volatility — Rolling Profit Variance Penalty",
+        template="plotly_dark",
+        paper_bgcolor="rgba(0,0,0,0)",
+        plot_bgcolor="rgba(0,0,0,0)",
+        height=300,
+        margin=dict(l=20, r=20, t=50, b=40),
+    )
+    fig.update_xaxes(title_text="Simulation Time", gridcolor="rgba(255,255,255,0.05)")
+    fig.update_yaxes(
+        title_text="Penalty (reward units)",
+        gridcolor="rgba(255,255,255,0.05)",
+    )
+    st.plotly_chart(fig, use_container_width=True)
+
+
 def render_action_log(df: pd.DataFrame):
-    """Render Action Log."""
     if df.empty:
         return
     st.subheader("📋 Recent Actions")
@@ -461,7 +489,6 @@ def render_action_log(df: pd.DataFrame):
 # ---------------------------------------------------------------------------
 # ---------------------------------------------------------------------------
 def main():
-    """Main."""
     render_sidebar()
     render_header()
 
@@ -478,6 +505,8 @@ def main():
         render_battery_balance_chart(df)
 
     render_cumulative_profit_chart(df)
+
+    render_risk_chart(df)
 
     render_action_log(df)
 

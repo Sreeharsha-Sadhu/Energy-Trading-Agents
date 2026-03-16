@@ -1,8 +1,11 @@
+import collections
+
 import gymnasium as gym
 import numpy as np
 from gymnasium import spaces
 
 from src.config import settings
+from src.forecaster.modeling.inference import get_forecast_data
 
 
 class EnergyTradingEnv(gym.Env):
@@ -18,8 +21,14 @@ class EnergyTradingEnv(gym.Env):
 
     metadata = {"render_modes": ["console"]}
 
+    # Number of recent profit steps to track for variance penalty.
+    _VARIANCE_WINDOW = 24
+    # Minimum samples before the variance penalty is applied.
+    _VARIANCE_MIN_SAMPLES = 5
+    # Scaling factor for the rolling-std risk penalty.
+    _VARIANCE_PENALTY_SCALE = 0.05
+
     def __init__(self, render_mode=None):
-        """Init."""
         super(EnergyTradingEnv, self).__init__()
 
         self.render_mode = render_mode
@@ -37,25 +46,33 @@ class EnergyTradingEnv(gym.Env):
         self.account_balance = settings.INITIAL_ACCOUNT_BALANCE
 
         self._price_history: list[float] = []
+        # Episode data buffer populated on reset via get_forecast_data.
+        self.current_episode_data = None
+        # Rolling profit buffer used to compute the variance penalty.
+        self.profit_history: collections.deque[float] = collections.deque(
+            maxlen=self._VARIANCE_WINDOW
+        )
 
         self.current_step = 0
-        self.max_steps = 48  # 48 hours per episode (2 days)
+        self.max_steps = 48
 
     def reset(self, seed=None, options=None):
-        """Reset."""
         super().reset(seed=seed)
 
         self.battery_level = settings.INITIAL_BATTERY_KWH
         self.account_balance = settings.INITIAL_ACCOUNT_BALANCE
-        self.current_price = np.random.uniform(0.05, 0.20)
-        self.forecasted_demand = np.random.uniform(0.5, 4.0)
-        self._price_history = [self.current_price]
+        self.profit_history.clear()
         self.current_step = 0
+
+        # Load a fresh window of market data for this episode.
+        self.current_episode_data = get_forecast_data(window_size=self.max_steps)
+        self.current_price = float(self.current_episode_data.iloc[0]["price"])
+        self.forecasted_demand = float(self.current_episode_data.iloc[0]["demand"])
+        self._price_history = [self.current_price]
 
         return self._get_obs(), {}
 
     def _get_obs(self):
-        """Get Obs."""
         return np.array(
             [
                 np.clip(self.current_price / 0.40, 0.0, 1.0),
@@ -67,13 +84,11 @@ class EnergyTradingEnv(gym.Env):
         )
 
     def _avg_price(self) -> float:
-        """Avg Price."""
         if not self._price_history:
             return self.current_price
-        return float(np.mean(self._price_history[-24:]))  # 24-hour rolling average
+        return float(np.mean(self._price_history[-24:]))
 
     def step(self, action):
-        """Step."""
         REWARD_SCALE = 0.01
 
         action_val = float(np.clip(action[0], -1.0, 1.0))
@@ -113,22 +128,28 @@ class EnergyTradingEnv(gym.Env):
 
         unmet_penalty = unmet_demand * price * 3.0
 
+        # --- Risk-adjusted reward: rolling profit variance penalty ---
+        self.profit_history.append(profit_from_trade)
+        variance_penalty = 0.0
+        if len(self.profit_history) > self._VARIANCE_MIN_SAMPLES:
+            profit_std = float(np.std(self.profit_history))
+            variance_penalty = profit_std * self._VARIANCE_PENALTY_SCALE
+
         profit_reward = profit_from_trade * REWARD_SCALE
         unmet_penalty_scaled = unmet_penalty * REWARD_SCALE
-        reward = profit_reward - penalty - unmet_penalty_scaled
+        reward = profit_reward - penalty - unmet_penalty_scaled - variance_penalty
 
         self.current_step += 1
 
-        hour_of_day = self.current_step % 24
-        base_price = 0.10 + 0.05 * np.sin(2 * np.pi * (hour_of_day - 6) / 24)
-        self.current_price = float(
-            np.clip(base_price + np.random.normal(0, 0.03), 0.02, 0.40)
-        )
-
-        base_demand = 2.0 + 1.5 * np.sin(2 * np.pi * (hour_of_day - 8) / 24)
-        self.forecasted_demand = float(
-            np.clip(base_demand + np.random.normal(0, 0.5), 0.2, 5.0)
-        )
+        # Advance market data from episode buffer; stay on the last row if we
+        # have somehow overrun (the terminated flag handles episode end).
+        if self.current_step < self.max_steps:
+            self.current_price = float(
+                self.current_episode_data.iloc[self.current_step]["price"]
+            )
+            self.forecasted_demand = float(
+                self.current_episode_data.iloc[self.current_step]["demand"]
+            )
 
         self._price_history.append(self.current_price)
 
@@ -145,12 +166,12 @@ class EnergyTradingEnv(gym.Env):
             "unmet_demand": unmet_demand,
             "penalty": penalty,
             "profit": profit_from_trade,
+            "variance_penalty": variance_penalty,
         }
 
         return obs, float(reward), terminated, truncated, info
 
     def render(self):
-        """Render."""
         if self.render_mode == "console":
             print(
                 f"Step: {self.current_step}, Price: {self.current_price:.3f}, "
