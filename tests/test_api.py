@@ -18,7 +18,7 @@ def test_trade_endpoint_success():
     data = response.json()
     assert "action" in data
     assert "confidence" in data
-    assert data["action"] in [0, 1, 2]
+    assert -1.0 <= data["action"] <= 1.0
     assert 0.0 <= data["confidence"] <= 1.0
 
 

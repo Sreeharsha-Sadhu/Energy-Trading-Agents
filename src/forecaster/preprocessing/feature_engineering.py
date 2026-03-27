@@ -27,7 +27,8 @@ def simulate_weather(df_index: pd.DatetimeIndex) -> pd.DataFrame:
     - Temperature (F)
     - Solar_Irradiance (W/m^2-like scale, clipped >= 0).
     """
-    idx = df_index.unique().sort_values()
+    # `unique()` can return DatetimeArray on newer pandas; normalize to index.
+    idx = pd.DatetimeIndex(df_index.unique()).sort_values()
     base_temp = 65  # Fahrenheit baseline
     dayofyear = idx.dayofyear.to_numpy()
     hour = idx.hour.to_numpy()

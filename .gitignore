@@ -147,3 +147,9 @@ pytest_cache/
 .mypy_cache/
 .dmypy.json
 .pytest_cache/
+
+
+.agent
+.claude
+.codex
+.github

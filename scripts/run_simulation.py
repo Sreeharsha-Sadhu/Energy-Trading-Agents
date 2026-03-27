@@ -21,6 +21,7 @@ import requests
 
 from src.config import settings
 from src.demo.data_provider import iterate_market_ticks
+from src.forecaster.modeling.inference import RealtimeDemandForecaster
 
 SCENARIO_CONTROL_FILE = "data/demo_logs/scenario_control.json"
 
@@ -43,7 +44,10 @@ def _read_scenario_overrides() -> dict:
 
 
 def run_simulation(
-    speed: float = 1.0, hours: int = 168, log_dir: str = "data/demo_logs"
+    speed: float = 1.0,
+    hours: int = 168,
+    log_dir: str = "data/demo_logs",
+    start_date: datetime | None = None,
 ):
     """Run the trading simulation loop.
 
@@ -56,7 +60,8 @@ def run_simulation(
     os.makedirs(log_dir, exist_ok=True)
     log_file = os.path.join(log_dir, "simulation_log.csv")
 
-    start_date = datetime.now()
+    if start_date is None:
+        start_date = datetime.now()
 
     balance = settings.INITIAL_ACCOUNT_BALANCE
     battery_level = settings.INITIAL_BATTERY_KWH
@@ -68,9 +73,15 @@ def run_simulation(
     _VARIANCE_WINDOW = 24
     _VARIANCE_MIN_SAMPLES = 5
     _VARIANCE_PENALTY_SCALE = 0.05
-    profit_history: collections.deque[float] = collections.deque(maxlen=_VARIANCE_WINDOW)
+    profit_history: collections.deque[float] = collections.deque(
+        maxlen=_VARIANCE_WINDOW
+    )
     last_logged_scenario = ""
     history: list[dict] = []
+    demand_history: collections.deque[float] = collections.deque(
+        maxlen=settings.DEMO_FORECAST_HISTORY_HOURS * 2
+    )
+    forecaster = RealtimeDemandForecaster(segment_name=settings.DEMO_FORECAST_SEGMENT)
 
     print(f"🚀 Starting simulation: {hours} hours at {speed}x speed")
     print(f"   Initial balance: ${balance:.2f} | Battery: {battery_level:.1f} kWh")
@@ -84,13 +95,18 @@ def run_simulation(
     ):
         overrides = _read_scenario_overrides()
         price = base_price * overrides["price_multiplier"]
-        demand = base_demand * overrides["demand_multiplier"]
+        actual_demand = base_demand * overrides["demand_multiplier"]
+        predicted_demand = forecaster.predict_demand(
+            dt=dt,
+            actual_demand=float(actual_demand),
+            demand_history=demand_history,
+        )
 
         action_name = "HOLD"
 
         state = {
             "current_price": float(price),
-            "forecasted_demand": float(demand),
+            "forecasted_demand": float(predicted_demand),
             "battery_level": float(battery_level),
             "account_balance": float(balance),
         }
@@ -104,10 +120,10 @@ def run_simulation(
             if response.status_code == 200:
                 data = response.json()
                 action_val = float(data.get("action", 0.0))
-                
+
                 # Proportional trade volume mirroring environment logic
                 step_trade_volume = abs(action_val) * settings.MAX_TRADE_VOLUME_KWH
-                
+
                 if action_val > 0.05:
                     action_name = "BUY"
                 elif action_val < -0.05:
@@ -137,11 +153,13 @@ def run_simulation(
                 step_profit = revenue
 
         unmet_demand = 0.0
-        if battery_level >= demand:
-            battery_level -= demand
+        if battery_level >= actual_demand:
+            battery_level -= actual_demand
         else:
-            unmet_demand = demand - battery_level
+            unmet_demand = actual_demand - battery_level
             battery_level = 0.0
+
+        demand_history.append(float(actual_demand))
 
         # Compute variance penalty matching the env reward shaping.
         profit_history.append(step_profit)
@@ -159,7 +177,10 @@ def run_simulation(
         log_entry = {
             "sim_datetime": dt.strftime("%Y-%m-%d %H:%M:%S"),
             "price": round(price, 4),
-            "demand": round(demand, 4),
+            "demand": round(actual_demand, 4),
+            "actual_demand": round(actual_demand, 4),
+            "predicted_demand": round(predicted_demand, 4),
+            "forecast_error": round(actual_demand - predicted_demand, 4),
             "action_name": action_name,
             "battery_level": round(battery_level, 2),
             "account_balance": round(balance, 2),
@@ -193,6 +214,16 @@ if __name__ == "__main__":
         "--speed", type=float, default=1, help="Sim speed: 1 real sec = X sim hours"
     )
     parser.add_argument("--hours", type=int, default=168, help="Total sim hours")
+    parser.add_argument(
+        "--start-date",
+        type=str,
+        default=None,
+        help="Simulation start datetime in ISO format (e.g., 2025-03-27 or 2025-03-27T00:00:00)",
+    )
     args = parser.parse_args()
 
-    run_simulation(speed=args.speed, hours=args.hours)
+    parsed_start_date: datetime | None = None
+    if args.start_date:
+        parsed_start_date = datetime.fromisoformat(args.start_date)
+
+    run_simulation(speed=args.speed, hours=args.hours, start_date=parsed_start_date)

@@ -12,6 +12,7 @@ MODELS_DIR = "models/"
 
 def get_features_and_target(df: pd.DataFrame, target="BaseLoad"):
     drop_cols = [
+        "Timestamp",
         "TradeDate",
         "TradeTime",
         "LoadProfile",
@@ -25,7 +26,11 @@ def get_features_and_target(df: pd.DataFrame, target="BaseLoad"):
         "Solar_Status",
         "Created",
     ]
-    features = [c for c in df.columns if c not in drop_cols + [target]]
+    features = [
+        c
+        for c in df.columns
+        if c not in drop_cols + [target] and not c.startswith("Unnamed")
+    ]
     return df[features], df[target]
 
 
@@ -41,7 +46,11 @@ def cross_val_score_timeseries(model, X, y, segment_name: str, splits: int = 5):
         model.fit(X_train, y_train)
         preds = model.predict(X_test)
 
-        metric = wape(y_test, preds) if "Solar" in segment_name else mape(y_test, preds)
+        metric = (
+            wape(y_test, preds)
+            if segment_name.endswith("_Solar")
+            else mape(y_test, preds)
+        )
         scores.append(metric)
 
     return sum(scores) / len(scores)

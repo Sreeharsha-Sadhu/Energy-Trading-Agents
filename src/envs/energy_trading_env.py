@@ -65,9 +65,13 @@ class EnergyTradingEnv(gym.Env):
         self.current_step = 0
 
         # Load a fresh window of market data for this episode.
+        # get_forecast_data now returns price, actual_demand, predicted_demand.
         self.current_episode_data = get_forecast_data(window_size=self.max_steps)
         self.current_price = float(self.current_episode_data.iloc[0]["price"])
-        self.forecasted_demand = float(self.current_episode_data.iloc[0]["demand"])
+        # Agent observes predicted demand (imperfect foresight)
+        self.forecasted_demand = float(
+            self.current_episode_data.iloc[0]["predicted_demand"]
+        )
         self._price_history = [self.current_price]
 
         return self._get_obs(), {}
@@ -77,8 +81,14 @@ class EnergyTradingEnv(gym.Env):
             [
                 np.clip(self.current_price / 0.40, 0.0, 1.0),
                 np.clip(self.forecasted_demand / 5.0, 0.0, 1.0),
-                np.clip(self.battery_level / settings.MAX_BATTERY_CAPACITY_KWH, 0.0, 1.0),
-                np.clip(self.account_balance / (settings.INITIAL_ACCOUNT_BALANCE * 2), 0.0, 1.0),
+                np.clip(
+                    self.battery_level / settings.MAX_BATTERY_CAPACITY_KWH, 0.0, 1.0
+                ),
+                np.clip(
+                    self.account_balance / (settings.INITIAL_ACCOUNT_BALANCE * 2),
+                    0.0,
+                    1.0,
+                ),
             ],
             dtype=np.float32,
         )
@@ -101,7 +111,8 @@ class EnergyTradingEnv(gym.Env):
             cost = trade_volume * price
             if (
                 self.account_balance >= cost
-                and self.battery_level + trade_volume <= settings.MAX_BATTERY_CAPACITY_KWH
+                and self.battery_level + trade_volume
+                <= settings.MAX_BATTERY_CAPACITY_KWH
             ):
                 self.account_balance -= cost
                 self.battery_level += trade_volume
@@ -118,12 +129,15 @@ class EnergyTradingEnv(gym.Env):
             else:
                 penalty = 1.0  # Normalized penalty
 
-        demand = self.forecasted_demand
+        # Battery drain uses actual_demand (ground truth consumption)
+        actual_demand = float(
+            self.current_episode_data.iloc[self.current_step]["actual_demand"]
+        )
         unmet_demand = 0.0
-        if self.battery_level >= demand:
-            self.battery_level -= demand
+        if self.battery_level >= actual_demand:
+            self.battery_level -= actual_demand
         else:
-            unmet_demand = demand - self.battery_level
+            unmet_demand = actual_demand - self.battery_level
             self.battery_level = 0.0
 
         unmet_penalty = unmet_demand * price * 3.0
@@ -147,8 +161,9 @@ class EnergyTradingEnv(gym.Env):
             self.current_price = float(
                 self.current_episode_data.iloc[self.current_step]["price"]
             )
+            # Agent observes predicted_demand (imperfect foresight)
             self.forecasted_demand = float(
-                self.current_episode_data.iloc[self.current_step]["demand"]
+                self.current_episode_data.iloc[self.current_step]["predicted_demand"]
             )
 
         self._price_history.append(self.current_price)

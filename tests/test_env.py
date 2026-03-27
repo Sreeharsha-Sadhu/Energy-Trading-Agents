@@ -20,7 +20,10 @@ def env():
 def test_env_reset_loads_episode_data(env):
     assert env.current_episode_data is not None
     assert len(env.current_episode_data) == env.max_steps
-    assert {"price", "demand"}.issubset(env.current_episode_data.columns)
+    # New schema: price, actual_demand, predicted_demand
+    assert {"price", "actual_demand", "predicted_demand"}.issubset(
+        env.current_episode_data.columns
+    )
     obs, _ = env.reset()
     assert env.observation_space.shape == (4,)
     assert obs.dtype == np.float32
@@ -49,10 +52,13 @@ def test_buy_full_battery():
     env.reset()
     env.battery_level = settings.MAX_BATTERY_CAPACITY_KWH
     env.account_balance = 1000.0
-    env.forecasted_demand = 0.0
+    # Observation uses predicted_demand, but actual_demand is read from episode data.
+    # Since battery is full, BUY action should fail.
+    initial_battery = env.battery_level
     _, reward, _, _, _ = env.step(BUY)
     assert reward < 0
-    assert env.battery_level == settings.MAX_BATTERY_CAPACITY_KWH
+    # Battery should not increase (full), and may decrease due to actual_demand
+    assert env.battery_level <= initial_battery
 
 
 def test_valid_buy_and_sell():
@@ -98,5 +104,6 @@ def test_variance_penalty_non_zero_after_enough_samples():
         _, _, _, _, info = env.step(action)
         last_penalty = info["variance_penalty"]
 
-    assert last_penalty > 0.0, "Expected a positive variance penalty after enough profit fluctuations"
-
+    assert last_penalty > 0.0, (
+        "Expected a positive variance penalty after enough profit fluctuations"
+    )

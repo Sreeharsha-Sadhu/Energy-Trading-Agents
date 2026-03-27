@@ -17,5 +17,10 @@ class Settings(BaseSettings):
     MODEL_SAVE_PATH: str = "models/ppo_energy_agent.zip"
     TOTAL_TIMESTEPS: int = 100000
 
+    DEMO_FORECAST_SEGMENT: str = "Residential_Solar"
+    DEMO_FORECAST_MIN_DEMAND_KWH: float = 0.1
+    DEMO_FORECAST_HISTORY_HOURS: int = 168
+    DEMO_FALLBACK_NOISE_STD: float = 0.08
+
 
 settings = Settings()
