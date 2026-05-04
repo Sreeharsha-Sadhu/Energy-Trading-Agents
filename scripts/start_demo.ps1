@@ -2,6 +2,7 @@ $ErrorActionPreference = "Stop"
 
 $ProjectRoot = $PSScriptRoot
 $env:PYTHONPATH = $ProjectRoot
+$env:PYTHONIOENCODING = "utf-8"
 $Speed = if ($args.Length -gt 0) { $args[0] } else { 1 }
 
 Write-Host "============================================================"

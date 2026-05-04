@@ -184,17 +184,23 @@ reports/experiment_report.md
 
 ---
 
-## ⚡ **Live Demo — RL Trading Agent**
+## ⚡ **Live Demo — Multi-Agent RL Trading Dashboard**
 
-A real-time Streamlit dashboard that visualises a PPO agent buying, selling, and holding energy in a simulated market.
+A real-time Streamlit dashboard that visualises a PPO agent competing against standard heuristic bots in a simulated market.
 
 ### Quick start
 
+**For Mac / Linux users:**
 ```bash
 bash scripts/start_demo.sh
 ```
 
-This launches the FastAPI backend, simulation loop, and Streamlit dashboard. Open **http://localhost:8501** to watch the agent trade.
+**For Windows (PowerShell) users:**
+```powershell
+.\scripts\start_demo.ps1
+```
+
+This launches the FastAPI backend, the Multi-Agent simulation loop, and the Streamlit dashboard. Open **http://localhost:8501** to watch the agents trade and compete.
 
 For full setup instructions, architecture details, configuration, and troubleshooting see
 **[Docs/DEMO_GUIDE.md](Docs/DEMO_GUIDE.md)**.
@@ -205,7 +211,13 @@ For full setup instructions, architecture details, configuration, and troublesho
 
 ### **1. Install dependencies**
 
-```
+This project uses [uv](https://github.com/astral-sh/uv) for lightning-fast dependency management.
+If you don't have `uv` installed, install it first:
+* **Windows:** `powershell -ExecutionPolicy ByPass -c "irm https://astral.sh/uv/install.ps1 | iex"`
+* **Mac/Linux:** `curl -LsSf https://astral.sh/uv/install.sh | sh`
+
+Then, sync the environment:
+```bash
 uv sync
 ```
 
@@ -243,12 +255,30 @@ uv run scripts/tune_all_models.py --n_trials 40
 
 ---
 
-### **6. Run inference**
+### **6. Run Phase II Model Comparison**
 
+Generate the Kalman-Viking and LSTM-CNN performance comparison table:
+```bash
+uv run scripts/compare_deep_models.py
 ```
+
+---
+
+### **7. Run inference**
+
+**Mac / Linux:**
+```bash
 uv run scripts/run_inference.py \
   --model models/Residential_Solar_LightGBM_best.joblib \
   --input data/segments/Residential_Solar.csv \
+  --out predictions.csv
+```
+
+**Windows (PowerShell):**
+```powershell
+uv run scripts/run_inference.py `
+  --model models/Residential_Solar_LightGBM_best.joblib `
+  --input data/segments/Residential_Solar.csv `
   --out predictions.csv
 ```
 
