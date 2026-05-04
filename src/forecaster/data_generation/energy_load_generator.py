@@ -24,6 +24,7 @@ from .load_factors import (
 from .solar_model import get_solar_irradiance
 from .tracking import load_tracking_data, save_tracking_data
 from .writer import write_data_chunk
+from .timegan import generate_timegan_data
 
 logger = logging.getLogger(__name__)
 logging.basicConfig(level=logging.INFO)
@@ -33,11 +34,13 @@ class EnergyLoadDataGenerator:
     """Orchestrates generation of hourly load records with solar logic."""
 
     def __init__(
-        self, tracking_file: str = TRACKING_FILE, output_csv: str = DEFAULT_OUTPUT_CSV
+        self, tracking_file: str = TRACKING_FILE, output_csv: str = DEFAULT_OUTPUT_CSV,
+        use_timegan: bool = False
     ):
         self.tz = TZ
         self.tracking_file = tracking_file
         self.output_csv = output_csv
+        self.use_timegan = use_timegan
         self.load_profiles = LOAD_PROFILES
         self.base_consumption = BASE_CONSUMPTION
         self.solar_capacity = SOLAR_CAPACITY
@@ -143,6 +146,11 @@ class EnergyLoadDataGenerator:
         logger.info(
             "Initial cutoff: %s | Final cutoff: %s", initial_cutoff, final_cutoff
         )
+
+        if self.use_timegan:
+            logger.info("=" * 60)
+            logger.info("[TIMEGAN ACTIVE] Synthetic data generation running via Generative Adversarial Network!")
+            logger.info("=" * 60)
 
         data_chunk = []
         record_id = 1

@@ -45,9 +45,10 @@ def _read_scenario_overrides() -> dict:
 
 def run_simulation(
     speed: float = 1.0,
-    hours: int = 168,
+    hours: int = 8760,
     log_dir: str = "data/demo_logs",
     start_date: datetime | None = None,
+    agent_id: str = "default",
 ):
     """Run the trading simulation loop.
 
@@ -55,7 +56,7 @@ def run_simulation(
         speed: Simulation speed multiplier (1 real sec = X sim hours).
         hours: Total number of simulation hours to run.
         log_dir: Directory for the CSV log consumed by the dashboard.
-
+        agent_id: Unique identifier for this agent.
     """
     os.makedirs(log_dir, exist_ok=True)
     log_file = os.path.join(log_dir, "simulation_log.csv")
@@ -63,19 +64,32 @@ def run_simulation(
     if start_date is None:
         start_date = datetime.now()
 
-    balance = settings.INITIAL_ACCOUNT_BALANCE
-    battery_level = settings.INITIAL_BATTERY_KWH
-    trade_volume = settings.MAX_TRADE_VOLUME_KWH
-    max_battery = settings.MAX_BATTERY_CAPACITY_KWH
-    initial_balance = balance
-
     # Mirror env constants so logged values match what PPO trained on.
     _VARIANCE_WINDOW = 24
     _VARIANCE_MIN_SAMPLES = 5
     _VARIANCE_PENALTY_SCALE = 0.05
-    profit_history: collections.deque[float] = collections.deque(
-        maxlen=_VARIANCE_WINDOW
-    )
+    
+    agents = {
+        "RL_Trader": {
+            "balance": settings.INITIAL_ACCOUNT_BALANCE,
+            "battery_level": settings.INITIAL_BATTERY_KWH,
+            "profit_history": collections.deque(maxlen=_VARIANCE_WINDOW),
+            "type": "rl"
+        },
+        "Greedy_Bot": {
+            "balance": settings.INITIAL_ACCOUNT_BALANCE,
+            "battery_level": settings.INITIAL_BATTERY_KWH,
+            "profit_history": collections.deque(maxlen=_VARIANCE_WINDOW),
+            "type": "greedy"
+        },
+        "Conservative_Bot": {
+            "balance": settings.INITIAL_ACCOUNT_BALANCE,
+            "battery_level": settings.INITIAL_BATTERY_KWH,
+            "profit_history": collections.deque(maxlen=_VARIANCE_WINDOW),
+            "type": "conservative"
+        }
+    }
+
     last_logged_scenario = ""
     history: list[dict] = []
     demand_history: collections.deque[float] = collections.deque(
@@ -83,11 +97,7 @@ def run_simulation(
     )
     forecaster = RealtimeDemandForecaster(segment_name=settings.DEMO_FORECAST_SEGMENT)
 
-    print(f"🚀 Starting simulation: {hours} hours at {speed}x speed")
-    print(f"   Initial balance: ${balance:.2f} | Battery: {battery_level:.1f} kWh")
-    print(
-        f"   Trade volume: {trade_volume:.1f} kWh | Max battery: {max_battery:.1f} kWh"
-    )
+    print(f"🚀 Starting Multi-Agent simulation: {hours} hours at {speed}x speed")
     print(f"📊 Logging to: {log_file}")
 
     for dt, base_price, base_demand in iterate_market_ticks(
@@ -102,108 +112,123 @@ def run_simulation(
             demand_history=demand_history,
         )
 
-        action_name = "HOLD"
-
-        state = {
-            "current_price": float(price),
-            "forecasted_demand": float(predicted_demand),
-            "battery_level": float(battery_level),
-            "account_balance": float(balance),
-        }
-
-        try:
-            response = requests.post(
-                "http://127.0.0.1:8000/api/v1/trade",
-                json=state,
-                timeout=2,
-            )
-            if response.status_code == 200:
-                data = response.json()
-                action_val = float(data.get("action", 0.0))
-
-                # Proportional trade volume mirroring environment logic
-                step_trade_volume = abs(action_val) * settings.MAX_TRADE_VOLUME_KWH
-
-                if action_val > 0.05:
-                    action_name = "BUY"
-                elif action_val < -0.05:
-                    action_name = "SELL"
-                else:
-                    action_name = "HOLD"
-            else:
-                action_name = "HOLD"
-                step_trade_volume = 0.0
-        except Exception:
-            action_name = "HOLD"
-            step_trade_volume = 0.0
-
-        cost = step_trade_volume * price
-        revenue = step_trade_volume * price
-        step_profit = 0.0
-
-        if action_name == "BUY":
-            if balance >= cost and battery_level + step_trade_volume <= max_battery:
-                battery_level += step_trade_volume
-                balance -= cost
-                step_profit = -cost
-        elif action_name == "SELL":
-            if battery_level >= step_trade_volume:
-                battery_level -= step_trade_volume
-                balance += revenue
-                step_profit = revenue
-
-        unmet_demand = 0.0
-        if battery_level >= actual_demand:
-            battery_level -= actual_demand
-        else:
-            unmet_demand = actual_demand - battery_level
-            battery_level = 0.0
-
         demand_history.append(float(actual_demand))
 
-        # Compute variance penalty matching the env reward shaping.
-        profit_history.append(step_profit)
-        variance_penalty = 0.0
-        if len(profit_history) > _VARIANCE_MIN_SAMPLES:
-            variance_penalty = float(np.std(profit_history)) * _VARIANCE_PENALTY_SCALE
-
-        # Reset scenario log once written to avoid duplicate lines on same scenario
+        # Determine scenario logic to prevent overlapping prints
         current_scenario = overrides.get("scenario_name", "")
         scenario_to_log = ""
         if current_scenario != last_logged_scenario:
             scenario_to_log = current_scenario
         last_logged_scenario = current_scenario
 
-        log_entry = {
-            "sim_datetime": dt.strftime("%Y-%m-%d %H:%M:%S"),
-            "price": round(price, 4),
-            "demand": round(actual_demand, 4),
-            "actual_demand": round(actual_demand, 4),
-            "predicted_demand": round(predicted_demand, 4),
-            "forecast_error": round(actual_demand - predicted_demand, 4),
-            "action_name": action_name,
-            "battery_level": round(battery_level, 2),
-            "account_balance": round(balance, 2),
-            "cumulative_profit": round(balance - initial_balance, 2),
-            "unmet_demand": round(unmet_demand, 2),
-            "reward": 0.0,
-            "variance_penalty": round(variance_penalty, 6),
-            "price_multiplier": overrides["price_multiplier"],
-            "demand_multiplier": overrides["demand_multiplier"],
-            "active_scenario": scenario_to_log,
-        }
-        history.append(log_entry)
+        for agent_name, state_dict in agents.items():
+            action_name = "HOLD"
+            step_trade_volume = 0.0
+            
+            if state_dict["type"] == "rl":
+                state_payload = {
+                    "current_price": float(price),
+                    "forecasted_demand": float(predicted_demand),
+                    "battery_level": float(state_dict["battery_level"]),
+                    "account_balance": float(state_dict["balance"]),
+                }
+                try:
+                    response = requests.post("http://127.0.0.1:8000/api/v1/trade", json=state_payload, timeout=2)
+                    if response.status_code == 200:
+                        data = response.json()
+                        action_val = float(data.get("action", 0.0))
+                        step_trade_volume = abs(action_val) * settings.MAX_TRADE_VOLUME_KWH
+                        if action_val > 0.05: action_name = "BUY"
+                        elif action_val < -0.05: action_name = "SELL"
+                        else: action_name = "HOLD"
+                except Exception:
+                    pass
+            elif state_dict["type"] == "greedy":
+                if price < 0.08:
+                    action_name = "BUY"
+                    step_trade_volume = settings.MAX_TRADE_VOLUME_KWH
+                elif price > 0.12:
+                    action_name = "SELL"
+                    step_trade_volume = settings.MAX_TRADE_VOLUME_KWH
+            elif state_dict["type"] == "conservative":
+                target = settings.MAX_BATTERY_CAPACITY_KWH * 0.5
+                if state_dict["battery_level"] < target and price < 0.09:
+                    action_name = "BUY"
+                    step_trade_volume = settings.MAX_TRADE_VOLUME_KWH
+                elif state_dict["battery_level"] > target and price > 0.11:
+                    action_name = "SELL"
+                    step_trade_volume = settings.MAX_TRADE_VOLUME_KWH
 
+            cost = step_trade_volume * price
+            revenue = step_trade_volume * price
+            step_profit = 0.0
+
+            if action_name == "BUY":
+                buy_vol = step_trade_volume
+                if state_dict["balance"] < (buy_vol * price):
+                    buy_vol = state_dict["balance"] / price
+                if state_dict["battery_level"] + buy_vol > settings.MAX_BATTERY_CAPACITY_KWH:
+                    buy_vol = settings.MAX_BATTERY_CAPACITY_KWH - state_dict["battery_level"]
+                
+                if buy_vol > 0.1:
+                    state_dict["battery_level"] += buy_vol
+                    state_dict["balance"] -= (buy_vol * price)
+                    step_profit = -(buy_vol * price)
+                else:
+                    action_name = "HOLD"
+
+            elif action_name == "SELL":
+                sell_vol = step_trade_volume
+                if state_dict["battery_level"] < sell_vol:
+                    sell_vol = state_dict["battery_level"]
+                
+                if sell_vol > 0.1:
+                    state_dict["battery_level"] -= sell_vol
+                    state_dict["balance"] += (sell_vol * price)
+                    step_profit = sell_vol * price
+                else:
+                    action_name = "HOLD"
+
+            unmet_demand = 0.0
+            if state_dict["battery_level"] >= actual_demand:
+                state_dict["battery_level"] -= actual_demand
+            else:
+                unmet_demand = actual_demand - state_dict["battery_level"]
+                state_dict["battery_level"] = 0.0
+
+            state_dict["profit_history"].append(step_profit)
+            variance_penalty = 0.0
+            if len(state_dict["profit_history"]) > _VARIANCE_MIN_SAMPLES:
+                variance_penalty = float(np.std(state_dict["profit_history"])) * _VARIANCE_PENALTY_SCALE
+
+            log_entry = {
+                "sim_datetime": dt.strftime("%Y-%m-%d %H:%M:%S"),
+                "agent_id": agent_name,
+                "price": round(price, 4),
+                "demand": round(actual_demand, 4),
+                "actual_demand": round(actual_demand, 4),
+                "predicted_demand": round(predicted_demand, 4),
+                "forecast_error": round(actual_demand - predicted_demand, 4),
+                "action_name": action_name,
+                "battery_level": round(state_dict["battery_level"], 2),
+                "account_balance": round(state_dict["balance"], 2),
+                "cumulative_profit": round(state_dict["balance"] - settings.INITIAL_ACCOUNT_BALANCE, 2),
+                "unmet_demand": round(unmet_demand, 2),
+                "reward": 0.0,
+                "variance_penalty": round(variance_penalty, 6),
+                "price_multiplier": overrides["price_multiplier"],
+                "demand_multiplier": overrides["demand_multiplier"],
+                "active_scenario": scenario_to_log if agent_name == "RL_Trader" else "", # Only log scenario once per tick
+            }
+            history.append(log_entry)
+
+        # Write to csv every tick
         pd.DataFrame(history).to_csv(log_file, index=False)
 
         time.sleep(1.0 / speed)
 
-        if len(history) % 24 == 0:
-            print(
-                f"✅ {dt}: Balance=${balance:.2f}, "
-                f"Battery={battery_level:.1f} kWh, "
-                f"P&L=${(balance - initial_balance):.2f}"
-            )
+        if len(history) % (24 * len(agents)) == 0:
+            print(f"✅ {dt}: Logged 24 hours for {len(agents)} agents.")
 
 
 if __name__ == "__main__":
@@ -213,17 +238,18 @@ if __name__ == "__main__":
     parser.add_argument(
         "--speed", type=float, default=1, help="Sim speed: 1 real sec = X sim hours"
     )
-    parser.add_argument("--hours", type=int, default=168, help="Total sim hours")
+    parser.add_argument("--hours", type=int, default=8760, help="Total sim hours")
     parser.add_argument(
         "--start-date",
         type=str,
         default=None,
-        help="Simulation start datetime in ISO format (e.g., 2025-03-27 or 2025-03-27T00:00:00)",
+        help="Simulation start datetime in ISO format (e.g., 2025-03-27)",
     )
+    parser.add_argument("--agent-id", type=str, default="default", help="Unique ID for this agent")
     args = parser.parse_args()
 
     parsed_start_date: datetime | None = None
     if args.start_date:
         parsed_start_date = datetime.fromisoformat(args.start_date)
 
-    run_simulation(speed=args.speed, hours=args.hours, start_date=parsed_start_date)
+    run_simulation(speed=args.speed, hours=args.hours, start_date=parsed_start_date, agent_id=args.agent_id)

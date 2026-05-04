@@ -5,7 +5,7 @@ import pandas as pd
 from sklearn.model_selection import TimeSeriesSplit
 
 from .metrics import mape, wape
-from .model_definitions import get_lightgbm_model, get_xgboost_model
+from .model_definitions import get_lightgbm_model, get_xgboost_model, get_lstm_cnn_model, get_kalman_viking_model
 
 MODELS_DIR = "models/"
 
@@ -62,6 +62,10 @@ def train_single_model(df: pd.DataFrame, segment_name: str, model_type: str):
 
     if model_type == "XGBoost":
         model = get_xgboost_model()
+    elif model_type == "LSTM_CNN":
+        model = get_lstm_cnn_model()
+    elif model_type == "KalmanViking":
+        model = get_kalman_viking_model()
     else:
         model = get_lightgbm_model()
 

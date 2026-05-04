@@ -21,14 +21,19 @@ def train_agent(env=None):
     return model
 
 
+_model_cache = None
+
 def predict_action(obs: np.ndarray) -> float:
     """Return the continuous action scalar in [-1.0, 1.0].
     
     Returns 0.0 (hold) if no trained model is found.
     """
+    global _model_cache
     if not os.path.exists(settings.MODEL_SAVE_PATH):
         return 0.0
 
-    model = PPO.load(settings.MODEL_SAVE_PATH)
-    action, _states = model.predict(obs, deterministic=True)
+    if _model_cache is None:
+        _model_cache = PPO.load(settings.MODEL_SAVE_PATH)
+
+    action, _states = _model_cache.predict(obs, deterministic=True)
     return float(action[0])

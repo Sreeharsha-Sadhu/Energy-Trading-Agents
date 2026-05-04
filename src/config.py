@@ -22,5 +22,9 @@ class Settings(BaseSettings):
     DEMO_FORECAST_HISTORY_HOURS: int = 168
     DEMO_FALLBACK_NOISE_STD: float = 0.08
 
+    # Market mechanics flags (Phase II)
+    ENABLE_PRICE_IMPACT: bool = False
+    ENABLE_IMBALANCE_PENALTY: bool = False
+
 
 settings = Settings()

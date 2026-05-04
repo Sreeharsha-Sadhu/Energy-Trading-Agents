@@ -107,6 +107,12 @@ class EnergyTradingEnv(gym.Env):
         profit_from_trade = 0.0
         penalty = 0.0
 
+        if getattr(settings, "ENABLE_PRICE_IMPACT", False):
+            # Market Price Impact: Trade volume causes slippage.
+            # Buy orders drive price up, sell orders drive price down.
+            slippage_factor = 0.05
+            price = price * (1 + (action_val * slippage_factor))
+
         if action_val > 0.05:  # Buy
             cost = trade_volume * price
             if (
@@ -149,9 +155,17 @@ class EnergyTradingEnv(gym.Env):
             profit_std = float(np.std(self.profit_history))
             variance_penalty = profit_std * self._VARIANCE_PENALTY_SCALE
 
+        # --- Imbalance Penalties ---
+        imbalance_penalty = 0.0
+        if getattr(settings, "ENABLE_IMBALANCE_PENALTY", False):
+            # Deviation between scheduled position (forecast) and actual metered volumes
+            deviation = abs(actual_demand - self.forecasted_demand)
+            imbalance_penalty = deviation * price * 2.0  # Penalty constraint
+
         profit_reward = profit_from_trade * REWARD_SCALE
         unmet_penalty_scaled = unmet_penalty * REWARD_SCALE
-        reward = profit_reward - penalty - unmet_penalty_scaled - variance_penalty
+        imbalance_penalty_scaled = imbalance_penalty * REWARD_SCALE
+        reward = profit_reward - penalty - unmet_penalty_scaled - variance_penalty - imbalance_penalty_scaled
 
         self.current_step += 1
 
@@ -182,6 +196,7 @@ class EnergyTradingEnv(gym.Env):
             "penalty": penalty,
             "profit": profit_from_trade,
             "variance_penalty": variance_penalty,
+            "imbalance_penalty": imbalance_penalty,
         }
 
         return obs, float(reward), terminated, truncated, info

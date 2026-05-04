@@ -301,6 +301,8 @@ def get_segment_model_path(segment_name: str) -> Path:
     # Try simple naming first, then full naming as fallback.
     candidates = [
         Path("models") / f"{segment_name}_best.joblib",
+        Path("models") / f"{segment_name}_LSTM_CNN_best.joblib",
+        Path("models") / f"{segment_name}_KalmanViking_best.joblib",
         Path("models") / f"{segment_name}_LightGBM_best.joblib",
         Path("models") / f"{segment_name}_XGBoost_best.joblib",
     ]

@@ -43,7 +43,7 @@ API_PID=$!
 sleep 3  # give the server time to start
 
 echo "📊 Starting simulation (speed=${SPEED}x) …"
-PYTHONPATH="$PROJECT_ROOT" CUDA_VISIBLE_DEVICES= uv run scripts/run_simulation.py --speed "$SPEED" --hours 168 &
+PYTHONPATH="$PROJECT_ROOT" CUDA_VISIBLE_DEVICES= uv run scripts/run_simulation.py --speed "$SPEED" --hours 8760 &
 SIM_PID=$!
 
 echo "🖥️  Starting Streamlit dashboard …"

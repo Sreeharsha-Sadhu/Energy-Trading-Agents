@@ -15,6 +15,7 @@ import os
 import time
 
 import pandas as pd
+import plotly.express as px
 import plotly.graph_objects as go
 import streamlit as st
 from plotly.subplots import make_subplots
@@ -66,6 +67,12 @@ def write_scenario_overrides(
 
 ACTION_COLORS = {"BUY": "#00c853", "SELL": "#ff1744", "HOLD": "#ffab00"}
 ACTION_SYMBOLS = {"BUY": "triangle-up", "SELL": "triangle-down", "HOLD": "circle"}
+
+AGENT_COLORS = {
+    "RL_Trader": "#00c853",
+    "Greedy_Bot": "#ff1744",
+    "Conservative_Bot": "#29b6f6"
+}
 
 SCENARIO_PRESETS = {
     "🌤️ Normal Market": {"price_multiplier": 1.0, "demand_multiplier": 1.0},
@@ -248,8 +255,8 @@ def render_header():
         unsafe_allow_html=True,
     )
     st.markdown(
-        '<p class="header-title">⚡ Energy Trading Agent — Live Dashboard</p>'
-        '<p class="header-sub">Reinforcement Learning PPO agent trading in a simulated energy market</p>',
+        '<p class="header-title">⚡ Multi-Agent Energy Trading — Live Dashboard</p>'
+        '<p class="header-sub">Comparing RL Traders vs Standard Heuristic Bots</p>',
         unsafe_allow_html=True,
     )
 
@@ -257,31 +264,43 @@ def render_header():
 def render_kpis(df: pd.DataFrame):
     if df.empty:
         st.info(
-            "⏳ Waiting for simulation data…  Run `python scripts/run_simulation.py` to start."
+            "⏳ Waiting for simulation data…  Run `scripts/run_simulation.py` to start."
         )
         return
 
-    latest = df.iloc[-1]
+    # Filter to show RL_Trader KPIs specifically for the top cards
+    rl_df = df[df.get("agent_id", "RL_Trader") == "RL_Trader"]
+    if rl_df.empty:
+        rl_df = df
+
+    latest = rl_df.iloc[-1]
     balance = latest["account_balance"]
     battery = latest["battery_level"]
     cum_profit = latest["cumulative_profit"]
-    total_unmet = df["unmet_demand"].sum()
-    num_buys = (df["action_name"] == "BUY").sum()
-    num_sells = (df["action_name"] == "SELL").sum()
+    total_unmet = rl_df["unmet_demand"].sum()
+    num_buys = (rl_df["action_name"] == "BUY").sum()
+    num_sells = (rl_df["action_name"] == "SELL").sum()
 
     profit_class = "positive" if cum_profit >= 0 else "negative"
 
-    cols = st.columns(6)
+    cols = st.columns(7)
+    total_imbalance_penalty = rl_df["imbalance_penalty"].sum() if "imbalance_penalty" in rl_df.columns else 0.0
+
     kpis = [
-        ("Account Balance", f"${balance:,.2f}", ""),
-        ("Battery Level", f"{battery:.1f} kWh", ""),
-        ("Cumulative P&L", f"${cum_profit:,.2f}", profit_class),
-        ("Buys", str(num_buys), ""),
-        ("Sells", str(num_sells), ""),
+        ("RL Balance", f"${balance:,.2f}", ""),
+        ("RL Battery", f"{battery:.1f} kWh", ""),
+        ("RL P&L", f"${cum_profit:,.2f}", profit_class),
+        ("RL Buys", str(num_buys), ""),
+        ("RL Sells", str(num_sells), ""),
         (
-            "Unmet Demand",
+            "RL Unmet",
             f"{total_unmet:.1f} kWh",
             "negative" if total_unmet > 0 else "",
+        ),
+        (
+            "RL Imbalance",
+            f"${total_imbalance_penalty:.1f}",
+            "negative" if total_imbalance_penalty > 0 else "",
         ),
     ]
     for col, (label, value, cls) in zip(cols, kpis):
@@ -298,15 +317,20 @@ def render_price_demand_chart(df: pd.DataFrame):
     if df.empty:
         return
 
-    actual_series = "actual_demand" if "actual_demand" in df.columns else "demand"
-    predicted_series = "predicted_demand" if "predicted_demand" in df.columns else None
+    # Plot market features from one agent's perspective (they all see the same market)
+    market_df = df[df.get("agent_id", "RL_Trader") == "RL_Trader"]
+    if market_df.empty:
+        market_df = df
+
+    actual_series = "actual_demand" if "actual_demand" in market_df.columns else "demand"
+    predicted_series = "predicted_demand" if "predicted_demand" in market_df.columns else None
 
     fig = make_subplots(specs=[[{"secondary_y": True}]])
 
     # Add scenario markers
-    if "active_scenario" in df.columns:
-        scenario_points = df[
-            df["active_scenario"].notna() & (df["active_scenario"] != "")
+    if "active_scenario" in market_df.columns:
+        scenario_points = market_df[
+            market_df["active_scenario"].notna() & (market_df["active_scenario"] != "")
         ]
         for row in scenario_points.itertuples(index=False):
             ts = row.sim_datetime.strftime("%Y-%m-%d %H:%M:%S")
@@ -316,6 +340,7 @@ def render_price_demand_chart(df: pd.DataFrame):
                 line_color="#ffffff",
                 opacity=0.5,
             )
+            # Add textangle=-90 to prevent overlapping labels!
             fig.add_annotation(
                 x=ts,
                 text=f" 💡 {row.active_scenario}",
@@ -325,14 +350,15 @@ def render_price_demand_chart(df: pd.DataFrame):
                 y=1.0,
                 xanchor="left",
                 yanchor="top",
+                textangle=-90,
                 font=dict(color="#ffffff", size=10),
                 bgcolor="rgba(26,26,46,0.8)",
             )
 
     fig.add_trace(
         go.Scatter(
-            x=df["sim_datetime"],
-            y=df["price"],
+            x=market_df["sim_datetime"],
+            y=market_df["price"],
             name="Price ($/kWh)",
             line=dict(color="#64ffda", width=2),
             fill="tozeroy",
@@ -343,9 +369,9 @@ def render_price_demand_chart(df: pd.DataFrame):
 
     fig.add_trace(
         go.Scatter(
-            x=df["sim_datetime"],
-            y=df[actual_series],
-            name="Actual Demand (kWh)",
+            x=market_df["sim_datetime"],
+            y=market_df[actual_series],
+            name="Actual Demand",
             line=dict(color="#ff6e40", width=2, dash="dot"),
         ),
         secondary_y=True,
@@ -354,24 +380,25 @@ def render_price_demand_chart(df: pd.DataFrame):
     if predicted_series is not None:
         fig.add_trace(
             go.Scatter(
-                x=df["sim_datetime"],
-                y=df[predicted_series],
-                name="Predicted Demand (kWh)",
+                x=market_df["sim_datetime"],
+                y=market_df[predicted_series],
+                name="Predicted Demand",
                 line=dict(color="#ffd166", width=2),
             ),
             secondary_y=True,
         )
 
+    # Only show the RL_Trader's actions on this chart to avoid clutter
     for action_name, color in ACTION_COLORS.items():
-        mask = df["action_name"] == action_name
+        mask = market_df["action_name"] == action_name
         if mask.any():
-            subset = df[mask]
+            subset = market_df[mask]
             fig.add_trace(
                 go.Scatter(
                     x=subset["sim_datetime"],
                     y=subset["price"],
                     mode="markers",
-                    name=action_name,
+                    name=f"RL {action_name}",
                     marker=dict(
                         color=color,
                         size=10,
@@ -383,15 +410,16 @@ def render_price_demand_chart(df: pd.DataFrame):
             )
 
     fig.update_layout(
-        title="Market Price & Demand with Agent Actions",
+        title="Market Price & Demand with RL Agent Actions",
         template="plotly_dark",
         paper_bgcolor="rgba(0,0,0,0)",
         plot_bgcolor="rgba(0,0,0,0)",
         height=420,
-        legend=dict(orientation="h", y=-0.15),
-        margin=dict(l=20, r=20, t=50, b=40),
+        legend=dict(orientation="h", y=-0.25), # Moved legend down
+        margin=dict(l=20, r=20, t=50, b=80), # Increased bottom margin
     )
-    fig.update_xaxes(title_text="Simulation Time", gridcolor="rgba(255,255,255,0.05)")
+    # Removed title_text="Simulation Time" to fix overlap with legend
+    fig.update_xaxes(gridcolor="rgba(255,255,255,0.05)")
     fig.update_yaxes(
         title_text="Price ($/kWh)",
         secondary_y=False,
@@ -410,38 +438,53 @@ def render_battery_balance_chart(df: pd.DataFrame):
 
     fig = make_subplots(specs=[[{"secondary_y": True}]])
 
-    fig.add_trace(
-        go.Scatter(
-            x=df["sim_datetime"],
-            y=df["battery_level"],
-            name="Battery (kWh)",
-            line=dict(color="#bb86fc", width=2.5),
-            fill="tozeroy",
-            fillcolor="rgba(187,134,252,0.10)",
-        ),
-        secondary_y=False,
-    )
-
-    fig.add_trace(
-        go.Scatter(
-            x=df["sim_datetime"],
-            y=df["account_balance"],
-            name="Balance ($)",
-            line=dict(color="#03dac6", width=2),
-        ),
-        secondary_y=True,
-    )
+    # We will plot the battery and balance for all agents
+    if "agent_id" in df.columns:
+        agents = df["agent_id"].unique()
+        for agent in agents:
+            agent_df = df[df["agent_id"] == agent]
+            color = AGENT_COLORS.get(agent, "#ffffff")
+            
+            fig.add_trace(
+                go.Scatter(
+                    x=agent_df["sim_datetime"],
+                    y=agent_df["account_balance"],
+                    name=f"{agent} Balance ($)",
+                    line=dict(color=color, width=2),
+                ),
+                secondary_y=True,
+            )
+            fig.add_trace(
+                go.Scatter(
+                    x=agent_df["sim_datetime"],
+                    y=agent_df["battery_level"],
+                    name=f"{agent} Battery (kWh)",
+                    line=dict(color=color, width=1.5, dash="dot"),
+                ),
+                secondary_y=False,
+            )
+    else:
+        # Fallback for old single-agent data
+        fig.add_trace(
+            go.Scatter(
+                x=df["sim_datetime"],
+                y=df["account_balance"],
+                name="Balance ($)",
+                line=dict(color="#03dac6", width=2),
+            ),
+            secondary_y=True,
+        )
 
     fig.update_layout(
-        title="Battery Level & Account Balance Over Time",
+        title="Agent Balances & Battery Levels",
         template="plotly_dark",
         paper_bgcolor="rgba(0,0,0,0)",
         plot_bgcolor="rgba(0,0,0,0)",
-        height=380,
-        legend=dict(orientation="h", y=-0.15),
-        margin=dict(l=20, r=20, t=50, b=40),
+        height=420, # Increased height to match left chart
+        legend=dict(orientation="h", y=-0.25), # Moved legend down
+        margin=dict(l=20, r=20, t=50, b=80), # Increased bottom margin
     )
-    fig.update_xaxes(title_text="Simulation Time", gridcolor="rgba(255,255,255,0.05)")
+    fig.update_xaxes(gridcolor="rgba(255,255,255,0.05)")
     fig.update_yaxes(
         title_text="Battery (kWh)",
         secondary_y=False,
@@ -459,27 +502,40 @@ def render_cumulative_profit_chart(df: pd.DataFrame):
         return
 
     fig = go.Figure()
-    fig.add_trace(
-        go.Scatter(
-            x=df["sim_datetime"],
-            y=df["cumulative_profit"],
-            name="Cumulative P&L",
-            line=dict(width=3),
-            fill="tozeroy",
-            fillcolor="rgba(0,200,83,0.12)",
+    
+    if "agent_id" in df.columns:
+        agents = df["agent_id"].unique()
+        for agent in agents:
+            agent_df = df[df["agent_id"] == agent]
+            color = AGENT_COLORS.get(agent, "#ffffff")
+            fig.add_trace(
+                go.Scatter(
+                    x=agent_df["sim_datetime"],
+                    y=agent_df["cumulative_profit"],
+                    name=f"{agent} P&L",
+                    line=dict(width=3, color=color),
+                )
+            )
+    else:
+        fig.add_trace(
+            go.Scatter(
+                x=df["sim_datetime"],
+                y=df["cumulative_profit"],
+                name="Cumulative P&L",
+                line=dict(width=3, color="#00c853"),
+            )
         )
-    )
 
     fig.add_hline(y=0, line_dash="dash", line_color="rgba(255,255,255,0.3)")
 
     fig.update_layout(
-        title="Cumulative Profit & Loss",
+        title="Multi-Agent Cumulative Profit & Loss",
         template="plotly_dark",
         paper_bgcolor="rgba(0,0,0,0)",
         plot_bgcolor="rgba(0,0,0,0)",
-        height=320,
+        height=350,
         margin=dict(l=20, r=20, t=50, b=40),
-        colorway=["#00c853"],
+        legend=dict(orientation="h", y=-0.2),
     )
     fig.update_xaxes(gridcolor="rgba(255,255,255,0.05)")
     fig.update_yaxes(title_text="Profit ($)", gridcolor="rgba(255,255,255,0.05)")
@@ -488,47 +544,45 @@ def render_cumulative_profit_chart(df: pd.DataFrame):
 
 
 def render_risk_chart(df: pd.DataFrame):
-    """Render a time-series of the rolling profit variance penalty.
-
-    The chart is skipped silently when the column does not exist so that
-    old CSV logs (without `variance_penalty`) still render without errors.
-    """
+    """Render a time-series of the rolling profit variance penalty."""
     if df.empty or "variance_penalty" not in df.columns:
         return
 
     fig = go.Figure()
 
-    # Add scenario markers
-    if "active_scenario" in df.columns:
-        scenario_points = df[
-            df["active_scenario"].notna() & (df["active_scenario"] != "")
-        ]
-        for _, row in scenario_points.iterrows():
-            fig.add_vline(
-                x=row["sim_datetime"].strftime("%Y-%m-%d %H:%M:%S"),
-                line_dash="dash",
-                line_color="#ffffff",
-                opacity=0.3,
+    if "agent_id" in df.columns:
+        agents = df["agent_id"].unique()
+        for agent in agents:
+            agent_df = df[df["agent_id"] == agent]
+            color = AGENT_COLORS.get(agent, "#ffffff")
+            fig.add_trace(
+                go.Scatter(
+                    x=agent_df["sim_datetime"],
+                    y=agent_df["variance_penalty"],
+                    name=f"{agent} Risk",
+                    line=dict(color=color, width=2),
+                )
             )
-    fig.add_trace(
-        go.Scatter(
-            x=df["sim_datetime"],
-            y=df["variance_penalty"],
-            name="Variance Penalty",
-            line=dict(color="#ff6e40", width=2),
-            fill="tozeroy",
-            fillcolor="rgba(255,110,64,0.12)",
+    else:
+        fig.add_trace(
+            go.Scatter(
+                x=df["sim_datetime"],
+                y=df["variance_penalty"],
+                name="Variance Penalty",
+                line=dict(color="#ff6e40", width=2),
+            )
         )
-    )
+        
     fig.update_layout(
         title="Risk / Volatility — Rolling Profit Variance Penalty",
         template="plotly_dark",
         paper_bgcolor="rgba(0,0,0,0)",
         plot_bgcolor="rgba(0,0,0,0)",
         height=300,
-        margin=dict(l=20, r=20, t=50, b=40),
+        margin=dict(l=20, r=20, t=50, b=60),
+        legend=dict(orientation="h", y=-0.2),
     )
-    fig.update_xaxes(title_text="Simulation Time", gridcolor="rgba(255,255,255,0.05)")
+    fig.update_xaxes(gridcolor="rgba(255,255,255,0.05)")
     fig.update_yaxes(
         title_text="Penalty (reward units)",
         gridcolor="rgba(255,255,255,0.05)",
@@ -539,38 +593,16 @@ def render_risk_chart(df: pd.DataFrame):
 def render_action_log(df: pd.DataFrame):
     if df.empty:
         return
-    st.subheader("📋 Recent Actions")
-    has_dual_demand = {"actual_demand", "predicted_demand"}.issubset(df.columns)
-    display_cols = ["sim_datetime", "price"]
-    if has_dual_demand:
-        display_cols.extend(["actual_demand", "predicted_demand", "forecast_error"])
-    else:
-        display_cols.append("demand")
-    display_cols.extend(["action_name", "battery_level", "account_balance", "reward"])
-
-    display = df[display_cols].tail(20).copy()
-    if has_dual_demand:
-        display.columns = [
-            "Time",
-            "Price",
-            "Actual Demand",
-            "Predicted Demand",
-            "Forecast Error",
-            "Action",
-            "Battery",
-            "Balance",
-            "Reward",
-        ]
-    else:
-        display.columns = [
-            "Time",
-            "Price",
-            "Demand",
-            "Action",
-            "Battery",
-            "Balance",
-            "Reward",
-        ]
+    st.subheader("📋 Recent Actions Log")
+    
+    display_cols = ["sim_datetime"]
+    if "agent_id" in df.columns:
+        display_cols.append("agent_id")
+    display_cols.extend(["price", "demand", "action_name", "battery_level", "account_balance"])
+    
+    display = df[display_cols].tail(30).copy()
+    display = display.sort_values(by=["sim_datetime", "agent_id"], ascending=[False, True])
+    
     st.dataframe(display, use_container_width=True, hide_index=True)
 
 

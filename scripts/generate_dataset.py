@@ -40,7 +40,7 @@ def main() -> int:
     if args.as_of_date:
         run_date = datetime.fromisoformat(args.as_of_date)
 
-    generator = EnergyLoadDataGenerator()
+    generator = EnergyLoadDataGenerator(use_timegan=True)
     generator.generate_incremental_dataset(
         current_date=run_date,
         force_full_regeneration=args.full,
