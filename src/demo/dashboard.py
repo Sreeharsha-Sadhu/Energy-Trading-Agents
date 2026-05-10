@@ -110,6 +110,8 @@ def render_sidebar():
             ):
                 st.session_state["price_mult"] = preset_vals["price_multiplier"]
                 st.session_state["demand_mult"] = preset_vals["demand_multiplier"]
+                st.session_state["last_price_mult"] = preset_vals["price_multiplier"]
+                st.session_state["last_demand_mult"] = preset_vals["demand_multiplier"]
                 st.session_state["active_scenario"] = preset_name
                 write_scenario_overrides(
                     preset_vals["price_multiplier"],
